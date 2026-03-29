@@ -1,6 +1,8 @@
+import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { notFound } from "next/navigation";
 import { formatDateTime } from "@/lib/utils";
+import { MatchCreateForm } from "@/components/admin/match-create-form";
 
 export default async function AdminMatchesPage({
   params,
@@ -11,15 +13,27 @@ export default async function AdminMatchesPage({
   const league = await prisma.league.findUnique({ where: { slug: leagueSlug } });
   if (!league) notFound();
 
-  const matches = await prisma.match.findMany({
-    where: { leagueId: league.id },
-    orderBy: { datetime: "desc" },
-    include: {
-      homeTeam: { select: { name: true } },
-      awayTeam: { select: { name: true } },
-      tournament: { select: { name: true } },
-    },
-  });
+  const [matches, tournaments, teams] = await Promise.all([
+    prisma.match.findMany({
+      where: { leagueId: league.id },
+      orderBy: { datetime: "desc" },
+      include: {
+        homeTeam: { select: { name: true } },
+        awayTeam: { select: { name: true } },
+        tournament: { select: { name: true } },
+      },
+    }),
+    prisma.tournament.findMany({
+      where: { leagueId: league.id, archivedAt: null },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true },
+    }),
+    prisma.team.findMany({
+      where: { leagueId: league.id, archivedAt: null },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true },
+    }),
+  ]);
 
   const statusLabels: Record<string, string> = {
     SCHEDULED: "Запланирован",
@@ -39,8 +53,9 @@ export default async function AdminMatchesPage({
 
   return (
     <div>
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <h1 className="text-2xl font-bold text-gray-900">Матчи</h1>
+        <MatchCreateForm tournaments={tournaments} teams={teams} />
       </div>
 
       <div className="mt-6 rounded-xl border bg-white shadow-sm overflow-hidden">
@@ -52,6 +67,7 @@ export default async function AdminMatchesPage({
               <th className="text-center px-4 py-3 font-medium text-gray-500">Счёт</th>
               <th className="text-left px-4 py-3 font-medium text-gray-500">Турнир</th>
               <th className="text-left px-4 py-3 font-medium text-gray-500">Статус</th>
+              <th className="text-right px-4 py-3 font-medium text-gray-500">Действия</th>
             </tr>
           </thead>
           <tbody className="divide-y">
@@ -74,11 +90,19 @@ export default async function AdminMatchesPage({
                     {statusLabels[m.status]}
                   </span>
                 </td>
+                <td className="px-4 py-3 text-right">
+                  <Link
+                    href={`/admin/matches/${m.id}`}
+                    className="text-sm font-medium text-blue-600 hover:text-blue-800"
+                  >
+                    {m.status === "FINISHED" ? "Результат и протокол" : "Протокол / результат"}
+                  </Link>
+                </td>
               </tr>
             ))}
             {matches.length === 0 && (
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-gray-400">
+                <td colSpan={6} className="px-4 py-8 text-center text-gray-400">
                   Нет матчей
                 </td>
               </tr>

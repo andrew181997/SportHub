@@ -1,16 +1,14 @@
+import { PlayerRole } from "@prisma/client";
 import { z } from "zod/v4";
 
 export const tournamentSchema = z.object({
   name: z.string().min(2, "Минимум 2 символа").max(100),
+  emblem: z
+    .string()
+    .max(500)
+    .optional()
+    .transform((s) => (s == null || s.trim() === "" ? undefined : s.trim())),
   type: z.enum(["REGULAR", "PLAYOFF", "GROUP_STAGE", "CUP"]),
-  seasonId: z.string().min(1, "Выберите сезон"),
-});
-
-export const seasonSchema = z.object({
-  name: z.string().min(3, "Например: 2025-2026").max(20),
-  startDate: z.coerce.date(),
-  endDate: z.coerce.date(),
-  isCurrent: z.boolean().optional(),
 });
 
 export const teamSchema = z.object({
@@ -22,14 +20,19 @@ export const teamSchema = z.object({
 });
 
 export const playerSchema = z.object({
-  firstName: z.string().min(1, "Введите имя").max(100),
-  lastName: z.string().min(1, "Введите фамилию").max(100),
-  middleName: z.string().max(100).optional(),
+  firstName: z
+    .string()
+    .min(1, "Введите имя")
+    .max(100)
+    .transform((s) => s.trim()),
+  lastName: z
+    .string()
+    .min(1, "Введите фамилию")
+    .max(100)
+    .transform((s) => s.trim()),
+  middleName: z.string().max(100).optional().or(z.literal("")),
   birthDate: z.coerce.date().optional(),
-  role: z.enum([
-    "SKATER", "GOALIE", "FORWARD", "DEFENDER", "MIDFIELDER",
-    "SETTER", "LIBERO", "CENTER", "GUARD", "WING", "OTHER",
-  ]).default("SKATER"),
+  role: z.nativeEnum(PlayerRole).default(PlayerRole.SKATER),
 });
 
 export const matchSchema = z.object({
@@ -111,7 +114,6 @@ export const siteConfigSchema = z.object({
 });
 
 export type TournamentInput = z.infer<typeof tournamentSchema>;
-export type SeasonInput = z.infer<typeof seasonSchema>;
 export type TeamInput = z.infer<typeof teamSchema>;
 export type PlayerInput = z.infer<typeof playerSchema>;
 export type MatchInput = z.infer<typeof matchSchema>;

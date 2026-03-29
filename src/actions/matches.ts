@@ -10,6 +10,27 @@ import {
 import { requireLeagueContext } from "@/lib/tenant";
 import { recalculateStandings } from "@/lib/standings";
 import { revalidatePath } from "next/cache";
+import { z } from "zod/v4";
+
+const protocolBundleSchema = z.object({
+  homeScore: z.coerce.number().min(0),
+  awayScore: z.coerce.number().min(0),
+  overtime: z.boolean(),
+  shootout: z.boolean(),
+  events: z.array(matchEventSchema),
+  penalties: z.array(penaltySchema),
+  goalieStats: z.array(
+    z.object({
+      playerId: z.string().min(1),
+      teamId: z.string().min(1),
+      saves: z.coerce.number().min(0),
+      goalsAgainst: z.coerce.number().min(0),
+      shutout: z.boolean(),
+    })
+  ),
+});
+
+export type MatchProtocolBundle = z.infer<typeof protocolBundleSchema>;
 
 export async function createMatch(formData: FormData) {
   const league = await requireLeagueContext();
@@ -52,6 +73,90 @@ export async function updateMatchResult(matchId: string, formData: FormData) {
   revalidatePath("/admin/matches");
   revalidatePath("/standings");
   revalidatePath("/results");
+  return { success: true };
+}
+
+/** Полная замена протокола и счёта (новый матч или правка завершённого). */
+export async function replaceMatchProtocol(
+  matchId: string,
+  bundle: MatchProtocolBundle
+) {
+  const league = await requireLeagueContext();
+  const parsed = protocolBundleSchema.safeParse(bundle);
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Некорректные данные" };
+  }
+
+  const match = await prisma.match.findFirst({
+    where: { id: matchId, leagueId: league.id },
+    select: {
+      id: true,
+      tournamentId: true,
+      homeTeamId: true,
+      awayTeamId: true,
+    },
+  });
+  if (!match) {
+    return { error: "Матч не найден" };
+  }
+
+  const teamIds = new Set([match.homeTeamId, match.awayTeamId]);
+  for (const e of parsed.data.events) {
+    if (!teamIds.has(e.teamId)) {
+      return { error: "Событие: неверная команда" };
+    }
+  }
+  for (const p of parsed.data.penalties) {
+    if (!teamIds.has(p.teamId)) {
+      return { error: "Штраф: неверная команда" };
+    }
+  }
+  for (const g of parsed.data.goalieStats) {
+    if (!teamIds.has(g.teamId)) {
+      return { error: "Вратарь: неверная команда" };
+    }
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.match.update({
+      where: { id: matchId },
+      data: {
+        homeScore: parsed.data.homeScore,
+        awayScore: parsed.data.awayScore,
+        overtime: parsed.data.overtime,
+        shootout: parsed.data.shootout,
+        status: "FINISHED",
+      },
+    });
+    await tx.matchEvent.deleteMany({ where: { matchId } });
+    await tx.penalty.deleteMany({ where: { matchId } });
+    await tx.goalieStats.deleteMany({ where: { matchId } });
+
+    if (parsed.data.events.length > 0) {
+      await tx.matchEvent.createMany({
+        data: parsed.data.events.map((e) => ({ ...e, matchId })),
+      });
+    }
+    if (parsed.data.penalties.length > 0) {
+      await tx.penalty.createMany({
+        data: parsed.data.penalties.map((p) => ({ ...p, matchId })),
+      });
+    }
+    if (parsed.data.goalieStats.length > 0) {
+      await tx.goalieStats.createMany({
+        data: parsed.data.goalieStats.map((g) => ({ ...g, matchId })),
+      });
+    }
+  });
+
+  await recalculateStandings(match.tournamentId);
+
+  revalidatePath("/admin/matches");
+  revalidatePath(`/admin/matches/${matchId}`);
+  revalidatePath("/standings");
+  revalidatePath("/results");
+  revalidatePath("/calendar");
+  revalidatePath(`/matches/${matchId}`);
   return { success: true };
 }
 

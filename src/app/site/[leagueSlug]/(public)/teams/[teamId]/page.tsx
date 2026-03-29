@@ -97,15 +97,19 @@ export default async function TeamDetailPage({
           <h2 className="text-lg font-semibold text-gray-900 mb-4">Последние матчи</h2>
           <div className="space-y-2">
             {recentMatches.map((m) => (
-              <div key={m.id} className="rounded-lg border bg-white p-3 flex items-center justify-between text-sm">
-                <span className={m.homeTeamId === teamId ? "font-bold" : ""}>
+              <Link
+                key={m.id}
+                href={`/matches/${m.id}`}
+                className="rounded-lg border bg-white p-3 flex items-center justify-between text-sm hover:border-blue-300 hover:shadow-sm transition-shadow"
+              >
+                <span className={m.homeTeamId === teamId ? "font-bold truncate pr-2" : "truncate pr-2"}>
                   {m.homeTeam.name}
                 </span>
-                <span className="font-bold px-3">{m.homeScore}:{m.awayScore}</span>
-                <span className={m.awayTeamId === teamId ? "font-bold" : ""}>
+                <span className="font-bold px-3 shrink-0 tabular-nums">{m.homeScore}:{m.awayScore}</span>
+                <span className={m.awayTeamId === teamId ? "font-bold truncate pl-2" : "truncate pl-2"}>
                   {m.awayTeam.name}
                 </span>
-              </div>
+              </Link>
             ))}
             {recentMatches.length === 0 && (
               <p className="text-sm text-gray-400">Нет матчей</p>

@@ -63,7 +63,9 @@ export default async function AdminLayout({
     },
   });
 
-  if (!membership) redirect("/");
+  if (!membership) {
+    redirect("/admin/login?error=no_access");
+  }
 
   return (
     <div className="flex min-h-screen bg-gray-50">

@@ -96,6 +96,7 @@ model Season {
 model Tournament {
   id         String         @id @default(cuid())
   name       String
+  emblem     String?
   type       TournamentType
   archivedAt DateTime?
   league     League         @relation(fields: [leagueId], references: [id], onDelete: Restrict)

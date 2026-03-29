@@ -158,3 +158,11 @@ export function getPositionsForSport(sportType: SportType) {
 export function getEventTypesForSport(sportType: SportType) {
   return SPORT_CONFIGS[sportType].eventTypes;
 }
+
+export function getEventTypeLabel(
+  sportType: SportType,
+  eventType: MatchEventType
+): string {
+  const cfg = SPORT_CONFIGS[sportType];
+  return cfg.eventTypes.find((e) => e.value === eventType)?.label ?? eventType;
+}

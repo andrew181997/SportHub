@@ -1,25 +1,10 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
-import { tournamentSchema, seasonSchema } from "@/lib/validations/league";
+import { tournamentSchema } from "@/lib/validations/league";
+import { ensureDefaultSeason } from "@/lib/default-season";
 import { requireLeagueContext } from "@/lib/tenant";
 import { revalidatePath } from "next/cache";
-
-export async function createSeason(formData: FormData) {
-  const league = await requireLeagueContext();
-  const parsed = seasonSchema.safeParse(Object.fromEntries(formData));
-
-  if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message };
-  }
-
-  await prisma.season.create({
-    data: { ...parsed.data, leagueId: league.id },
-  });
-
-  revalidatePath("/admin/tournaments");
-  return { success: true };
-}
 
 export async function createTournament(formData: FormData) {
   const league = await requireLeagueContext();
@@ -29,12 +14,21 @@ export async function createTournament(formData: FormData) {
     return { error: parsed.error.issues[0]?.message };
   }
 
-  await prisma.tournament.create({
-    data: { ...parsed.data, leagueId: league.id },
+  const season = await ensureDefaultSeason(league.id);
+
+  const tournament = await prisma.tournament.create({
+    data: {
+      name: parsed.data.name,
+      emblem: parsed.data.emblem,
+      type: parsed.data.type,
+      leagueId: league.id,
+      seasonId: season.id,
+    },
   });
 
   revalidatePath("/admin/tournaments");
-  return { success: true };
+  revalidatePath(`/admin/tournaments/${tournament.id}`);
+  return { success: true as const, id: tournament.id };
 }
 
 export async function updateTournament(id: string, formData: FormData) {
@@ -47,10 +41,15 @@ export async function updateTournament(id: string, formData: FormData) {
 
   await prisma.tournament.update({
     where: { id, leagueId: league.id },
-    data: parsed.data,
+    data: {
+      name: parsed.data.name,
+      emblem: parsed.data.emblem,
+      type: parsed.data.type,
+    },
   });
 
   revalidatePath("/admin/tournaments");
+  revalidatePath(`/admin/tournaments/${id}`);
   return { success: true };
 }
 

@@ -72,22 +72,26 @@ export default async function LeagueHomePage({
               </div>
               <div className="space-y-3">
                 {upcomingMatches.map((match) => (
-                  <div key={match.id} className="rounded-lg border bg-white p-4 flex items-center justify-between">
-                    <div className="flex items-center gap-4 flex-1">
-                      <span className="font-medium text-gray-900 text-sm flex-1 text-right">
+                  <Link
+                    key={match.id}
+                    href={`/matches/${match.id}`}
+                    className="rounded-lg border bg-white p-4 flex items-center justify-between hover:border-blue-300 hover:shadow-sm transition-shadow"
+                  >
+                    <div className="flex items-center gap-4 flex-1 min-w-0">
+                      <span className="font-medium text-gray-900 text-sm flex-1 text-right truncate">
                         {match.homeTeam.name}
                       </span>
-                      <span className="text-xs text-gray-400 font-medium px-3 py-1 bg-gray-100 rounded">
+                      <span className="text-xs text-gray-400 font-medium px-3 py-1 bg-gray-100 rounded shrink-0">
                         VS
                       </span>
-                      <span className="font-medium text-gray-900 text-sm flex-1">
+                      <span className="font-medium text-gray-900 text-sm flex-1 truncate">
                         {match.awayTeam.name}
                       </span>
                     </div>
-                    <span className="text-xs text-gray-500 ml-4 whitespace-nowrap">
+                    <span className="text-xs text-gray-500 ml-4 whitespace-nowrap shrink-0">
                       {formatDateLong(match.datetime)}
                     </span>
-                  </div>
+                  </Link>
                 ))}
                 {upcomingMatches.length === 0 && (
                   <p className="text-sm text-gray-400 py-4">Нет запланированных матчей</p>
@@ -108,19 +112,23 @@ export default async function LeagueHomePage({
               </div>
               <div className="space-y-3">
                 {recentResults.map((match) => (
-                  <div key={match.id} className="rounded-lg border bg-white p-4 flex items-center justify-between">
-                    <div className="flex items-center gap-4 flex-1">
-                      <span className="font-medium text-gray-900 text-sm flex-1 text-right">
+                  <Link
+                    key={match.id}
+                    href={`/matches/${match.id}`}
+                    className="rounded-lg border bg-white p-4 flex items-center justify-between hover:border-blue-300 hover:shadow-sm transition-shadow"
+                  >
+                    <div className="flex items-center gap-4 flex-1 min-w-0">
+                      <span className="font-medium text-gray-900 text-sm flex-1 text-right truncate">
                         {match.homeTeam.name}
                       </span>
-                      <span className="text-lg font-bold text-gray-900 px-3">
+                      <span className="text-lg font-bold text-gray-900 px-3 shrink-0 tabular-nums">
                         {match.homeScore} : {match.awayScore}
                       </span>
-                      <span className="font-medium text-gray-900 text-sm flex-1">
+                      <span className="font-medium text-gray-900 text-sm flex-1 truncate">
                         {match.awayTeam.name}
                       </span>
                     </div>
-                  </div>
+                  </Link>
                 ))}
                 {recentResults.length === 0 && (
                   <p className="text-sm text-gray-400 py-4">Нет завершённых матчей</p>

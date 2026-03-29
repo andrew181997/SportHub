@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Plus, Trash2 } from "lucide-react";
-import { addMatchEvent, addPenalty, saveGoalieStats, updateMatchResult } from "@/actions/matches";
+import { replaceMatchProtocol } from "@/actions/matches";
 import type { SportConfig } from "@/lib/sport-config";
 
 interface Player {
@@ -29,6 +30,17 @@ interface PenaltyEntry {
   time: string;
 }
 
+export interface MatchProtocolInitial {
+  homeScore: number;
+  awayScore: number;
+  overtime: boolean;
+  shootout: boolean;
+  events: ProtocolEvent[];
+  penalties: PenaltyEntry[];
+  /** Сохранённые сэйвы и «сухой» по id вратаря */
+  goalieStats: { playerId: string; saves: number; shutout: boolean }[];
+}
+
 interface Props {
   matchId: string;
   homeTeamId: string;
@@ -38,7 +50,12 @@ interface Props {
   homePlayers: Player[];
   awayPlayers: Player[];
   sportConfig: SportConfig;
+  initialProtocol?: MatchProtocolInitial | null;
+  /** Матч уже в статусе «завершён» — подписи кнопки и сообщения как при правке. */
+  hasFinishedResult?: boolean;
 }
+
+const TIME_RE = /^\d{1,2}:\d{2}$/;
 
 export function MatchProtocolForm({
   matchId,
@@ -49,13 +66,29 @@ export function MatchProtocolForm({
   homePlayers,
   awayPlayers,
   sportConfig,
+  initialProtocol,
+  hasFinishedResult = false,
 }: Props) {
-  const [homeScore, setHomeScore] = useState(0);
-  const [awayScore, setAwayScore] = useState(0);
-  const [overtime, setOvertime] = useState(false);
-  const [shootout, setShootout] = useState(false);
-  const [events, setEvents] = useState<ProtocolEvent[]>([]);
-  const [penalties, setPenalties] = useState<PenaltyEntry[]>([]);
+  const router = useRouter();
+  const [homeScore, setHomeScore] = useState(initialProtocol?.homeScore ?? 0);
+  const [awayScore, setAwayScore] = useState(initialProtocol?.awayScore ?? 0);
+  const [overtime, setOvertime] = useState(initialProtocol?.overtime ?? false);
+  const [shootout, setShootout] = useState(initialProtocol?.shootout ?? false);
+  const [events, setEvents] = useState<ProtocolEvent[]>(() =>
+    (initialProtocol?.events ?? []).map((e) => ({ ...e }))
+  );
+  const [penalties, setPenalties] = useState<PenaltyEntry[]>(() =>
+    (initialProtocol?.penalties ?? []).map((p) => ({ ...p }))
+  );
+  const [goalieFields, setGoalieFields] = useState<
+    Record<string, { saves: number; shutout: boolean }>
+  >(() => {
+    const m: Record<string, { saves: number; shutout: boolean }> = {};
+    for (const g of initialProtocol?.goalieStats ?? []) {
+      m[g.playerId] = { saves: g.saves, shutout: g.shutout };
+    }
+    return m;
+  });
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
 
@@ -76,9 +109,11 @@ export function MatchProtocolForm({
     setEvents(events.filter((_, i) => i !== index));
   };
 
-  const updateEvent = (index: number, field: string, value: string | number) => {
+  const updateEvent = (index: number, field: keyof ProtocolEvent, value: string | number) => {
     const updated = [...events];
-    (updated[index] as Record<string, string | number>)[field] = value;
+    const row = { ...updated[index]! };
+    (row as Record<string, string | number>)[field] = value;
+    updated[index] = row;
     setEvents(updated);
   };
 
@@ -100,71 +135,85 @@ export function MatchProtocolForm({
     setPenalties(penalties.filter((_, i) => i !== index));
   };
 
-  const updatePenaltyEntry = (index: number, field: string, value: string | number) => {
+  const updatePenaltyEntry = (
+    index: number,
+    field: keyof PenaltyEntry,
+    value: string | number
+  ) => {
     const updated = [...penalties];
-    (updated[index] as Record<string, string | number>)[field] = value;
+    const row = { ...updated[index]! };
+    (row as Record<string, string | number>)[field] = value;
+    updated[index] = row;
     setPenalties(updated);
   };
 
   const getPlayersForTeam = (teamId: string) =>
     teamId === homeTeamId ? homePlayers : awayPlayers;
 
+  const goalies = [...homePlayers, ...awayPlayers].filter((p) => p.role === "GOALIE");
+
   const handleSave = async () => {
     setSaving(true);
     setMessage("");
 
-    try {
-      const resultForm = new FormData();
-      resultForm.set("homeScore", homeScore.toString());
-      resultForm.set("awayScore", awayScore.toString());
-      resultForm.set("overtime", overtime.toString());
-      resultForm.set("shootout", shootout.toString());
-      await updateMatchResult(matchId, resultForm);
+    const validEvents = events.filter(
+      (e) => e.playerId && e.time && TIME_RE.test(e.time.trim())
+    );
+    const validPenalties = penalties.filter(
+      (p) => p.playerId && p.time && TIME_RE.test(p.time.trim()) && p.reason.trim()
+    );
 
-      for (const event of events) {
-        if (!event.playerId || !event.time) continue;
-        const eventForm = new FormData();
-        eventForm.set("type", event.type);
-        eventForm.set("playerId", event.playerId);
-        eventForm.set("teamId", event.teamId);
-        eventForm.set("period", event.period.toString());
-        eventForm.set("time", event.time);
-        await addMatchEvent(matchId, eventForm);
-      }
+    const goalieStats = goalies.map((goalie) => {
+      const teamId = homePlayers.some((p) => p.id === goalie.id)
+        ? homeTeamId
+        : awayTeamId;
+      const goalsAgainst = teamId === homeTeamId ? awayScore : homeScore;
+      const f = goalieFields[goalie.id] ?? { saves: 0, shutout: false };
+      return {
+        playerId: goalie.id,
+        teamId,
+        saves: f.saves,
+        goalsAgainst,
+        shutout: goalsAgainst === 0 && f.shutout,
+      };
+    });
 
-      for (const penalty of penalties) {
-        if (!penalty.playerId || !penalty.time) continue;
-        const penaltyForm = new FormData();
-        penaltyForm.set("playerId", penalty.playerId);
-        penaltyForm.set("teamId", penalty.teamId);
-        penaltyForm.set("minutes", penalty.minutes.toString());
-        penaltyForm.set("reason", penalty.reason);
-        penaltyForm.set("period", penalty.period.toString());
-        penaltyForm.set("time", penalty.time);
-        await addPenalty(matchId, penaltyForm);
-      }
+    const result = await replaceMatchProtocol(matchId, {
+      homeScore,
+      awayScore,
+      overtime,
+      shootout,
+      events: validEvents.map((e) => ({
+        type: e.type as never,
+        playerId: e.playerId,
+        teamId: e.teamId,
+        period: e.period,
+        time: e.time.trim(),
+      })),
+      penalties: validPenalties.map((p) => ({
+        playerId: p.playerId,
+        teamId: p.teamId,
+        minutes: p.minutes,
+        reason: p.reason.trim(),
+        period: p.period,
+        time: p.time.trim(),
+      })),
+      goalieStats,
+    });
 
-      const goalies = [...homePlayers, ...awayPlayers].filter(
-        (p) => p.role === "GOALIE"
-      );
-      for (const goalie of goalies) {
-        const teamId = homePlayers.includes(goalie) ? homeTeamId : awayTeamId;
-        const goalsAgainst = teamId === homeTeamId ? awayScore : homeScore;
-        await saveGoalieStats(matchId, {
-          playerId: goalie.id,
-          teamId,
-          saves: 0,
-          goalsAgainst,
-          shutout: goalsAgainst === 0,
-        });
-      }
-
-      setMessage("Протокол сохранён. Таблица пересчитана.");
-    } catch {
-      setMessage("Ошибка при сохранении протокола");
-    } finally {
+    if ("error" in result && result.error) {
+      setMessage(`Ошибка: ${result.error}`);
       setSaving(false);
+      return;
     }
+
+    setMessage(
+      hasFinishedResult
+        ? "Изменения сохранены, таблица пересчитана."
+        : "Протокол сохранён. Таблица пересчитана."
+    );
+    router.refresh();
+    setSaving(false);
   };
 
   return (
@@ -216,12 +265,69 @@ export function MatchProtocolForm({
         </div>
       </div>
 
+      {goalies.length > 0 && (
+        <div className="rounded-xl border bg-white p-6">
+          <h3 className="text-lg font-semibold mb-4">Вратари</h3>
+          <div className="space-y-3">
+            {goalies.map((g) => {
+              const teamId = homePlayers.some((p) => p.id === g.id) ? homeTeamId : awayTeamId;
+              const name = teamId === homeTeamId ? homeTeamName : awayTeamName;
+              const f = goalieFields[g.id] ?? { saves: 0, shutout: false };
+              return (
+                <div
+                  key={g.id}
+                  className="flex flex-wrap items-center gap-3 text-sm border-b border-gray-100 pb-3 last:border-0"
+                >
+                  <span className="font-medium text-gray-900 min-w-[140px]">
+                    {g.lastName} {g.firstName}
+                  </span>
+                  <span className="text-gray-500 text-xs">{name}</span>
+                  <label className="flex items-center gap-1 ml-auto">
+                    <span className="text-gray-600">Сэйвы</span>
+                    <input
+                      type="number"
+                      min={0}
+                      value={f.saves}
+                      onChange={(e) =>
+                        setGoalieFields((prev) => ({
+                          ...prev,
+                          [g.id]: {
+                            ...f,
+                            saves: Number(e.target.value) || 0,
+                          },
+                        }))
+                      }
+                      className="w-20 rounded border border-gray-300 px-2 py-1 text-center"
+                    />
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={f.shutout}
+                      onChange={(e) =>
+                        setGoalieFields((prev) => ({
+                          ...prev,
+                          [g.id]: { ...f, shutout: e.target.checked },
+                        }))
+                      }
+                      className="rounded"
+                    />
+                    Сухой матч
+                  </label>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       <div className="rounded-xl border bg-white p-6">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-semibold">
             События ({sportConfig.terminology.period})
           </h3>
           <button
+            type="button"
             onClick={addEvent}
             className="flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700"
           >
@@ -243,7 +349,9 @@ export function MatchProtocolForm({
               className="rounded-lg border border-gray-300 px-2 py-1.5 text-sm"
             >
               {sportConfig.eventTypes.map((t) => (
-                <option key={t.value} value={t.value}>{t.label}</option>
+                <option key={t.value} value={t.value}>
+                  {t.label}
+                </option>
               ))}
             </select>
             <select
@@ -273,7 +381,6 @@ export function MatchProtocolForm({
               value={event.period}
               onChange={(e) => updateEvent(i, "period", Number(e.target.value))}
               className="w-16 rounded-lg border border-gray-300 px-2 py-1.5 text-sm text-center"
-              placeholder={sportConfig.terminology.period}
             />
             <input
               type="text"
@@ -283,6 +390,7 @@ export function MatchProtocolForm({
               placeholder="MM:SS"
             />
             <button
+              type="button"
               onClick={() => removeEvent(i)}
               className="p-1.5 text-red-400 hover:text-red-600"
             >
@@ -296,6 +404,7 @@ export function MatchProtocolForm({
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-semibold">Штрафы / Нарушения</h3>
           <button
+            type="button"
             onClick={addPenaltyEntry}
             className="flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700"
           >
@@ -337,7 +446,6 @@ export function MatchProtocolForm({
               value={pen.minutes}
               onChange={(e) => updatePenaltyEntry(i, "minutes", Number(e.target.value))}
               className="w-16 rounded-lg border border-gray-300 px-2 py-1.5 text-sm text-center"
-              placeholder="мин"
             />
             <input
               type="text"
@@ -352,7 +460,6 @@ export function MatchProtocolForm({
               value={pen.period}
               onChange={(e) => updatePenaltyEntry(i, "period", Number(e.target.value))}
               className="w-16 rounded-lg border border-gray-300 px-2 py-1.5 text-sm text-center"
-              placeholder="П"
             />
             <input
               type="text"
@@ -362,6 +469,7 @@ export function MatchProtocolForm({
               placeholder="MM:SS"
             />
             <button
+              type="button"
               onClick={() => removePenalty(i)}
               className="p-1.5 text-red-400 hover:text-red-600"
             >
@@ -372,17 +480,28 @@ export function MatchProtocolForm({
       </div>
 
       {message && (
-        <div className="rounded-lg bg-blue-50 border border-blue-200 p-3 text-sm text-blue-700">
+        <div
+          className={`rounded-lg border p-3 text-sm ${
+            message.startsWith("Ошибка:")
+              ? "bg-red-50 border-red-200 text-red-800"
+              : "bg-blue-50 border-blue-200 text-blue-700"
+          }`}
+        >
           {message}
         </div>
       )}
 
       <button
+        type="button"
         onClick={handleSave}
         disabled={saving}
         className="w-full rounded-lg bg-blue-600 py-3 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 transition-colors"
       >
-        {saving ? "Сохранение протокола..." : "Сохранить протокол и пересчитать таблицу"}
+        {saving
+          ? "Сохранение..."
+          : hasFinishedResult
+            ? "Сохранить изменения и пересчитать таблицу"
+            : "Сохранить протокол и пересчитать таблицу"}
       </button>
     </div>
   );

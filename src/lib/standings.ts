@@ -39,6 +39,18 @@ export async function recalculateStandings(tournamentId: string) {
 
   if (!tournament) return;
 
+  const previousRows = await prisma.standing.findMany({
+    where: { tournamentId },
+    select: {
+      teamId: true,
+      groupId: true,
+      gamesPlayed: true,
+      wins: true,
+      losses: true,
+      draws: true,
+    },
+  });
+
   const config = POINTS_CONFIG[tournament.league.sportType];
   const stats = new Map<
     string,
@@ -120,6 +132,29 @@ export async function recalculateStandings(tournamentId: string) {
       away.draws++;
       home.points += config.draw;
       away.points += config.draw;
+    }
+  }
+
+  for (const row of previousRows) {
+    const idle =
+      row.gamesPlayed === 0 &&
+      row.wins === 0 &&
+      row.losses === 0 &&
+      row.draws === 0;
+    if (idle && !stats.has(row.teamId)) {
+      stats.set(row.teamId, {
+        teamId: row.teamId,
+        groupId: row.groupId,
+        gamesPlayed: 0,
+        wins: 0,
+        losses: 0,
+        draws: 0,
+        overtimeWins: 0,
+        overtimeLosses: 0,
+        goalsFor: 0,
+        goalsAgainst: 0,
+        points: 0,
+      });
     }
   }
 

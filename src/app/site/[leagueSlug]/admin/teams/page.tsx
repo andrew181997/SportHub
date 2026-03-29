@@ -1,28 +1,65 @@
 import { prisma } from "@/lib/prisma";
 import { notFound } from "next/navigation";
+import Link from "next/link";
+import { TeamCreateForm } from "@/components/admin/team-create-form";
+import { AdminSearchForm } from "@/components/admin/admin-search-form";
+import type { Prisma } from "@prisma/client";
 
 export default async function AdminTeamsPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ leagueSlug: string }>;
+  searchParams: Promise<{ q?: string }>;
 }) {
   const { leagueSlug } = await params;
+  const { q: qRaw } = await searchParams;
+  const q = qRaw?.trim();
+
   const league = await prisma.league.findUnique({ where: { slug: leagueSlug } });
   if (!league) notFound();
 
-  const teams = await prisma.team.findMany({
-    where: { leagueId: league.id },
-    orderBy: { name: "asc" },
-    include: { _count: { select: { rosters: true } } },
-  });
+  const where: Prisma.TeamWhereInput = {
+    leagueId: league.id,
+    ...(q
+      ? {
+          OR: [
+            { name: { contains: q, mode: "insensitive" } },
+            { city: { contains: q, mode: "insensitive" } },
+          ],
+        }
+      : {}),
+  };
+
+  const [teams, tournamentsForForm] = await Promise.all([
+    prisma.team.findMany({
+      where,
+      orderBy: { name: "asc" },
+      include: { _count: { select: { rosters: true } } },
+    }),
+    prisma.tournament.findMany({
+      where: { leagueId: league.id, archivedAt: null },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true },
+    }),
+  ]);
 
   return (
     <div>
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <h1 className="text-2xl font-bold text-gray-900">Команды</h1>
+        <TeamCreateForm tournaments={tournamentsForForm} />
       </div>
 
-      <div className="mt-6 rounded-xl border bg-white shadow-sm overflow-hidden">
+      <div className="mt-6 rounded-xl border border-gray-200 bg-gray-50/80 p-4">
+        <AdminSearchForm
+          placeholder="Название или город…"
+          defaultQuery={q ?? ""}
+          resetHref="/admin/teams"
+        />
+      </div>
+
+      <div className="mt-4 rounded-xl border bg-white shadow-sm overflow-hidden">
         <table className="w-full text-sm">
           <thead className="bg-gray-50 border-b">
             <tr>
@@ -30,6 +67,7 @@ export default async function AdminTeamsPage({
               <th className="text-left px-4 py-3 font-medium text-gray-500">Город</th>
               <th className="text-right px-4 py-3 font-medium text-gray-500">Игроков</th>
               <th className="text-left px-4 py-3 font-medium text-gray-500">Статус</th>
+              <th className="text-right px-4 py-3 font-medium text-gray-500">Состав</th>
             </tr>
           </thead>
           <tbody className="divide-y">
@@ -45,12 +83,20 @@ export default async function AdminTeamsPage({
                     <span className="rounded bg-green-100 px-2 py-0.5 text-xs text-green-700">Активная</span>
                   )}
                 </td>
+                <td className="px-4 py-3 text-right">
+                  <Link
+                    href={`/admin/players?team=${encodeURIComponent(team.id)}`}
+                    className="text-blue-600 hover:text-blue-800 font-medium"
+                  >
+                    Игроки команды
+                  </Link>
+                </td>
               </tr>
             ))}
             {teams.length === 0 && (
               <tr>
-                <td colSpan={4} className="px-4 py-8 text-center text-gray-400">
-                  Нет команд
+                <td colSpan={5} className="px-4 py-8 text-center text-gray-400">
+                  {q ? "Ничего не найдено." : "Нет команд"}
                 </td>
               </tr>
             )}

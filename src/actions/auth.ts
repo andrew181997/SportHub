@@ -18,6 +18,7 @@ import {
   forgotPasswordSchema,
   resetPasswordSchema,
 } from "@/lib/validations/auth";
+import { ensureDefaultSeason } from "@/lib/default-season";
 
 export async function register(formData: FormData) {
   const headersList = await headers();
@@ -62,6 +63,8 @@ export async function register(formData: FormData) {
       plan: { create: {} },
     },
   });
+
+  await ensureDefaultSeason(league.id);
 
   await prisma.userLeague.create({
     data: { userId: user.id, leagueId: league.id, role: "ADMIN" },
@@ -138,6 +141,18 @@ export async function resendOtp(email: string) {
   await sendVerificationCode(email, code);
 
   return { success: true };
+}
+
+/** Лимит попыток входа (для клиентского signIn на странице админки лиги). */
+export async function consumeLoginRateLimitSlot() {
+  const headersList = await headers();
+  const ip = getRateLimitIdentifier(headersList);
+  const rateLimit = checkRateLimit(ip, "login");
+  if (!rateLimit.allowed) {
+    logger.warn({ ip, action: "login" }, "Rate limit exceeded");
+    return { error: "Слишком много попыток входа. Подождите минуту." };
+  }
+  return { ok: true as const };
 }
 
 export async function login(formData: FormData) {

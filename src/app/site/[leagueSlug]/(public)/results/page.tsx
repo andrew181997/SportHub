@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { notFound } from "next/navigation";
 import { formatDateLong } from "@/lib/utils";
@@ -28,19 +29,23 @@ export default async function ResultsPage({
 
       <div className="mt-6 space-y-3">
         {matches.map((m) => (
-          <div key={m.id} className="rounded-lg border bg-white p-4 flex items-center justify-between">
-            <div className="flex items-center gap-4 flex-1">
-              <span className="text-sm font-medium text-gray-900 flex-1 text-right">
+          <Link
+            key={m.id}
+            href={`/matches/${m.id}`}
+            className="rounded-lg border bg-white p-4 flex items-center justify-between hover:border-blue-300 hover:shadow-sm transition-shadow"
+          >
+            <div className="flex items-center gap-4 flex-1 min-w-0">
+              <span className="text-sm font-medium text-gray-900 flex-1 text-right truncate">
                 {m.homeTeam.name}
               </span>
-              <span className="text-lg font-bold text-gray-900 px-3 min-w-[60px] text-center">
+              <span className="text-lg font-bold text-gray-900 px-3 min-w-[60px] text-center shrink-0">
                 {m.homeScore} : {m.awayScore}
               </span>
-              <span className="text-sm font-medium text-gray-900 flex-1">
+              <span className="text-sm font-medium text-gray-900 flex-1 truncate">
                 {m.awayTeam.name}
               </span>
             </div>
-            <div className="text-right ml-4">
+            <div className="text-right ml-4 shrink-0">
               <p className="text-xs text-gray-500">{formatDateLong(m.datetime)}</p>
               <p className="text-xs text-gray-400">{m.tournament.name}</p>
               {(m.overtime || m.shootout) && (
@@ -48,8 +53,9 @@ export default async function ResultsPage({
                   {m.shootout ? "Бул." : "ОТ"}
                 </span>
               )}
+              <p className="text-xs text-blue-600 mt-1 font-medium">Протокол →</p>
             </div>
-          </div>
+          </Link>
         ))}
         {matches.length === 0 && (
           <p className="text-gray-400 py-8 text-center">Нет результатов</p>

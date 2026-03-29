@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { notFound } from "next/navigation";
 import { formatDateLong } from "@/lib/utils";
@@ -78,15 +79,19 @@ export default async function TournamentDetailPage({
         <h2 className="text-lg font-semibold text-gray-900 mb-4">Матчи</h2>
         <div className="space-y-2">
           {tournament.matches.map((m) => (
-            <div key={m.id} className="rounded-lg border bg-white p-3 flex items-center justify-between text-sm">
-              <span className="flex-1 text-right font-medium">{m.homeTeam.name}</span>
-              <span className="px-3 font-bold">
+            <Link
+              key={m.id}
+              href={`/matches/${m.id}`}
+              className="rounded-lg border bg-white p-3 flex items-center justify-between text-sm hover:border-blue-300 hover:shadow-sm transition-shadow"
+            >
+              <span className="flex-1 text-right font-medium truncate pr-2">{m.homeTeam.name}</span>
+              <span className="px-3 font-bold shrink-0">
                 {m.status === "FINISHED"
                   ? `${m.homeScore} : ${m.awayScore}`
                   : formatDateLong(m.datetime)}
               </span>
-              <span className="flex-1 font-medium">{m.awayTeam.name}</span>
-            </div>
+              <span className="flex-1 font-medium truncate pl-2">{m.awayTeam.name}</span>
+            </Link>
           ))}
         </div>
       </section>
