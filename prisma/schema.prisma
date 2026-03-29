@@ -1,0 +1,504 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Пользователи и роли ────────────────────────────────
+
+model User {
+  id             String      @id @default(cuid())
+  email          String      @unique
+  name           String
+  passwordHash   String
+  status         UserStatus  @default(PENDING)
+  isSuperAdmin   Boolean     @default(false)
+  failedAttempts Int         @default(0)
+  lockedUntil    DateTime?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  leagues UserLeague[]
+}
+
+model UserLeague {
+  id        String     @id @default(cuid())
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  league    League     @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  leagueId  String
+  role      LeagueRole @default(ADMIN)
+  createdAt DateTime   @default(now())
+
+  @@unique([userId, leagueId])
+}
+
+model VerificationCode {
+  id        String   @id @default(cuid())
+  email     String
+  codeHash  String
+  type      CodeType @default(REGISTRATION)
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([email, type])
+  @@index([codeHash])
+}
+
+// ─── Лига и сезоны ──────────────────────────────────────
+
+model League {
+  id          String    @id @default(cuid())
+  name        String
+  slug        String    @unique
+  logo        String?
+  description String?
+  sportType   SportType
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  seasons      Season[]
+  tournaments  Tournament[]
+  teams        Team[]
+  players      Player[]
+  coaches      Coach[]
+  referees     Referee[]
+  news         News[]
+  media        Media[]
+  applications Application[]
+  members      UserLeague[]
+  matches      Match[]
+  siteConfig   SiteConfig?
+  plan         LeaguePlan?
+}
+
+model Season {
+  id        String   @id @default(cuid())
+  name      String
+  startDate DateTime
+  endDate   DateTime
+  isCurrent Boolean  @default(false)
+  league    League   @relation(fields: [leagueId], references: [id])
+  leagueId  String
+
+  tournaments Tournament[]
+  rosters     TeamRoster[]
+
+  @@unique([leagueId, name])
+}
+
+// ─── Турниры и группы ───────────────────────────────────
+
+model Tournament {
+  id         String         @id @default(cuid())
+  name       String
+  type       TournamentType
+  archivedAt DateTime?
+  league     League         @relation(fields: [leagueId], references: [id], onDelete: Restrict)
+  leagueId   String
+  season     Season         @relation(fields: [seasonId], references: [id], onDelete: Restrict)
+  seasonId   String
+
+  groups       Group[]
+  matches      Match[]
+  standings    Standing[]
+  applications Application[]
+  media        Media[]
+}
+
+model Group {
+  id           String     @id @default(cuid())
+  name         String
+  archivedAt   DateTime?
+  tournament   Tournament @relation(fields: [tournamentId], references: [id], onDelete: Restrict)
+  tournamentId String
+
+  matches   Match[]
+  standings Standing[]
+}
+
+// ─── Матчи и события ────────────────────────────────────
+
+model Match {
+  id           String      @id @default(cuid())
+  datetime     DateTime
+  status       MatchStatus @default(SCHEDULED)
+  archivedAt   DateTime?
+  homeTeam     Team        @relation("HomeMatches", fields: [homeTeamId], references: [id], onDelete: Restrict)
+  homeTeamId   String
+  awayTeam     Team        @relation("AwayMatches", fields: [awayTeamId], references: [id], onDelete: Restrict)
+  awayTeamId   String
+  homeScore    Int?
+  awayScore    Int?
+  overtime     Boolean     @default(false)
+  shootout     Boolean     @default(false)
+  venue        String?
+  round        Int?
+  tournament   Tournament  @relation(fields: [tournamentId], references: [id], onDelete: Restrict)
+  tournamentId String
+  group        Group?      @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  groupId      String?
+  league       League      @relation(fields: [leagueId], references: [id], onDelete: Restrict)
+  leagueId     String
+
+  events      MatchEvent[]
+  penalties   Penalty[]
+  goalieStats GoalieStats[]
+  media       Media[]
+
+  @@index([leagueId, datetime])
+  @@index([tournamentId])
+}
+
+model MatchEvent {
+  id       String         @id @default(cuid())
+  type     MatchEventType
+  match    Match          @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  matchId  String
+  player   Player         @relation(fields: [playerId], references: [id], onDelete: Restrict)
+  playerId String
+  team     Team           @relation(fields: [teamId], references: [id], onDelete: Restrict)
+  teamId   String
+  period   Int
+  time     String
+
+  @@index([matchId])
+}
+
+model Penalty {
+  id       String @id @default(cuid())
+  match    Match  @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  matchId  String
+  player   Player @relation(fields: [playerId], references: [id], onDelete: Restrict)
+  playerId String
+  team     Team   @relation(fields: [teamId], references: [id], onDelete: Restrict)
+  teamId   String
+  minutes  Int
+  reason   String
+  period   Int
+  time     String
+
+  @@index([matchId])
+}
+
+model GoalieStats {
+  id           String  @id @default(cuid())
+  match        Match   @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  matchId      String
+  player       Player  @relation(fields: [playerId], references: [id], onDelete: Restrict)
+  playerId     String
+  team         Team    @relation(fields: [teamId], references: [id], onDelete: Restrict)
+  teamId       String
+  saves        Int     @default(0)
+  goalsAgainst Int     @default(0)
+  shutout      Boolean @default(false)
+
+  @@unique([matchId, playerId])
+}
+
+// ─── Команды и составы ──────────────────────────────────
+
+model Team {
+  id           String                    @id @default(cuid())
+  name         String
+  logo         String?
+  city         String?
+  foundedYear  Int?
+  description  String?
+  contactEmail String?
+  archivedAt   DateTime?
+  searchVector Unsupported("tsvector")?
+  league       League                    @relation(fields: [leagueId], references: [id], onDelete: Restrict)
+  leagueId     String
+  createdAt    DateTime                  @default(now())
+  updatedAt    DateTime                  @updatedAt
+
+  homeMatches Match[]       @relation("HomeMatches")
+  awayMatches Match[]       @relation("AwayMatches")
+  rosters     TeamRoster[]
+  coaches     Coach[]
+  events      MatchEvent[]
+  penalties   Penalty[]
+  goalieStats GoalieStats[]
+  standings   Standing[]
+
+  @@index([leagueId])
+}
+
+model Player {
+  id           String                    @id @default(cuid())
+  firstName    String
+  lastName     String
+  middleName   String?
+  birthDate    DateTime?
+  photo        String?
+  role         PlayerRole                @default(SKATER)
+  archivedAt   DateTime?
+  searchVector Unsupported("tsvector")?
+  league       League                    @relation(fields: [leagueId], references: [id], onDelete: Restrict)
+  leagueId     String
+  createdAt    DateTime                  @default(now())
+  updatedAt    DateTime                  @updatedAt
+
+  rosters     TeamRoster[]
+  events      MatchEvent[]
+  penalties   Penalty[]
+  goalieStats GoalieStats[]
+
+  @@index([leagueId])
+}
+
+model TeamRoster {
+  id        String  @id @default(cuid())
+  team      Team    @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  teamId    String
+  player    Player  @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  playerId  String
+  season    Season  @relation(fields: [seasonId], references: [id], onDelete: Restrict)
+  seasonId  String
+  number    Int?
+  position  String?
+  isCaptain Boolean @default(false)
+
+  @@unique([teamId, playerId, seasonId])
+}
+
+// ─── Турнирная таблица ──────────────────────────────────
+
+model Standing {
+  id             String     @id @default(cuid())
+  team           Team       @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  teamId         String
+  tournament     Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  tournamentId   String
+  group          Group?     @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  groupId        String?
+  gamesPlayed    Int        @default(0)
+  wins           Int        @default(0)
+  losses         Int        @default(0)
+  draws          Int        @default(0)
+  overtimeWins   Int        @default(0)
+  overtimeLosses Int        @default(0)
+  goalsFor       Int        @default(0)
+  goalsAgainst   Int        @default(0)
+  points         Int        @default(0)
+
+  @@unique([teamId, tournamentId])
+  @@index([tournamentId])
+}
+
+// ─── Персонал ───────────────────────────────────────────
+
+model Coach {
+  id        String  @id @default(cuid())
+  firstName String
+  lastName  String
+  photo     String?
+  team      Team?   @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  teamId    String?
+  league    League  @relation(fields: [leagueId], references: [id], onDelete: Restrict)
+  leagueId  String
+
+  @@index([leagueId])
+}
+
+model Referee {
+  id        String  @id @default(cuid())
+  firstName String
+  lastName  String
+  photo     String?
+  category  String?
+  league    League  @relation(fields: [leagueId], references: [id], onDelete: Restrict)
+  leagueId  String
+
+  @@index([leagueId])
+}
+
+// ─── Контент ────────────────────────────────────────────
+
+model News {
+  id           String                    @id @default(cuid())
+  title        String
+  slug         String
+  content      String
+  coverImage   String?
+  tags         String[]
+  hidden       Boolean                   @default(false)
+  hiddenReason String?
+  publishedAt  DateTime?
+  searchVector Unsupported("tsvector")?
+  league       League                    @relation(fields: [leagueId], references: [id])
+  leagueId     String
+  createdAt    DateTime                  @default(now())
+  updatedAt    DateTime                  @updatedAt
+
+  @@unique([leagueId, slug])
+  @@index([leagueId, publishedAt])
+}
+
+model Media {
+  id           String      @id @default(cuid())
+  type         MediaType
+  url          String
+  caption      String?
+  hidden       Boolean     @default(false)
+  hiddenReason String?
+  match        Match?      @relation(fields: [matchId], references: [id], onDelete: SetNull)
+  matchId      String?
+  tournament   Tournament? @relation(fields: [tournamentId], references: [id], onDelete: SetNull)
+  tournamentId String?
+  league       League      @relation(fields: [leagueId], references: [id])
+  leagueId     String
+  createdAt    DateTime    @default(now())
+
+  @@index([leagueId])
+}
+
+// ─── Заявки ─────────────────────────────────────────────
+
+model Application {
+  id           String            @id @default(cuid())
+  teamName     String
+  contactName  String
+  contactEmail String
+  contactPhone String?
+  message      String?
+  status       ApplicationStatus @default(PENDING)
+  tournament   Tournament        @relation(fields: [tournamentId], references: [id], onDelete: Restrict)
+  tournamentId String
+  league       League            @relation(fields: [leagueId], references: [id], onDelete: Restrict)
+  leagueId     String
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  @@index([leagueId, status])
+}
+
+// ─── Конфигурация сайта ─────────────────────────────────
+
+model SiteConfig {
+  id             String @id @default(cuid())
+  league         League @relation(fields: [leagueId], references: [id])
+  leagueId       String @unique
+  theme          String @default("default")
+  primaryColor   String @default("#1d4ed8")
+  secondaryColor String @default("#9333ea")
+  navItems       Json   @default("[]")
+  sections       Json   @default("[]")
+  footerText     String?
+}
+
+// ─── Платформа ──────────────────────────────────────────
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  action     String
+  userId     String
+  userEmail  String
+  leagueId   String?
+  targetType String?
+  targetId   String?
+  details    Json?
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+
+  @@index([action])
+  @@index([leagueId])
+  @@index([createdAt])
+}
+
+model LeaguePlan {
+  id             String @id @default(cuid())
+  league         League @relation(fields: [leagueId], references: [id])
+  leagueId       String @unique
+  maxTeams       Int    @default(20)
+  maxPlayers     Int    @default(500)
+  maxStorageMb   Int    @default(1024)
+  maxTournaments Int    @default(10)
+}
+
+// ─── Перечисления ───────────────────────────────────────
+
+enum UserStatus {
+  PENDING
+  ACTIVE
+  BLOCKED
+}
+
+enum LeagueRole {
+  ADMIN
+  EDITOR
+}
+
+enum CodeType {
+  REGISTRATION
+  PASSWORD_RESET
+}
+
+enum SportType {
+  HOCKEY
+  FOOTBALL
+  BASKETBALL
+  VOLLEYBALL
+  OTHER
+}
+
+enum TournamentType {
+  REGULAR
+  PLAYOFF
+  GROUP_STAGE
+  CUP
+}
+
+enum MatchStatus {
+  SCHEDULED
+  LIVE
+  FINISHED
+  POSTPONED
+  CANCELLED
+}
+
+enum MatchEventType {
+  GOAL
+  ASSIST
+  YELLOW_CARD
+  RED_CARD
+  SUBSTITUTION
+  TIMEOUT
+  FOUL
+  CORNER
+  OFFSIDE
+  FREE_KICK
+  PENALTY_SHOT
+  SAVE
+  BLOCK
+}
+
+enum PlayerRole {
+  SKATER
+  GOALIE
+  FORWARD
+  DEFENDER
+  MIDFIELDER
+  SETTER
+  LIBERO
+  CENTER
+  GUARD
+  WING
+  OTHER
+}
+
+enum MediaType {
+  PHOTO
+  VIDEO
+}
+
+enum ApplicationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
