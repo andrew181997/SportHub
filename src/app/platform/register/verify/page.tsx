@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { Suspense, useState, useRef, useEffect, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import { verifyOtp, resendOtp } from "@/actions/auth";
 
-export default function VerifyPage() {
+function VerifyPageContent() {
   const searchParams = useSearchParams();
   const email = searchParams.get("email") ?? "";
   const password = searchParams.get("p") ?? "";
@@ -142,5 +142,19 @@ export default function VerifyPage() {
         </button>
       </div>
     </div>
+  );
+}
+
+export default function VerifyPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-[calc(100vh-10rem)] flex items-center justify-center py-12 px-4 text-sm text-gray-500">
+          Загрузка…
+        </div>
+      }
+    >
+      <VerifyPageContent />
+    </Suspense>
   );
 }

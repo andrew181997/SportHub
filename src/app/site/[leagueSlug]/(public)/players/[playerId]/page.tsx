@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { notFound } from "next/navigation";
 import { formatDate } from "@/lib/utils";
+import { getPlayerRoleLabel } from "@/lib/sport-config";
 
 export default async function PlayerDetailPage({
   params,
@@ -34,8 +35,8 @@ export default async function PlayerDetailPage({
 
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <div className="flex items-center gap-6 mb-8">
-        <div className="w-24 h-24 rounded-2xl bg-gray-100 flex items-center justify-center text-3xl font-bold text-gray-400 overflow-hidden">
+      <div className="surface-entity-card flex items-center gap-6 mb-8 p-6">
+        <div className="w-24 h-24 rounded-2xl bg-slate-100 border-2 border-slate-200 flex items-center justify-center text-3xl font-bold text-slate-500 overflow-hidden shrink-0">
           {player.photo ? (
             <img src={player.photo} alt="" className="w-full h-full object-cover" />
           ) : (
@@ -43,14 +44,14 @@ export default async function PlayerDetailPage({
           )}
         </div>
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">
+          <h1 className="text-2xl font-bold text-slate-900">
             {player.lastName} {player.firstName} {player.middleName ?? ""}
           </h1>
-          <p className="text-gray-500">
-            {player.role === "GOALIE" ? "Вратарь" : "Полевой игрок"}
+          <p className="text-slate-700 font-medium">
+            {getPlayerRoleLabel(league.sportType, player.role)}
           </p>
           {player.birthDate && (
-            <p className="text-sm text-gray-400">
+            <p className="text-sm text-slate-500">
               Дата рождения: {formatDate(player.birthDate)}
             </p>
           )}
@@ -58,25 +59,25 @@ export default async function PlayerDetailPage({
       </div>
 
       <div className="grid grid-cols-3 gap-4 mb-8">
-        <div className="rounded-xl border bg-white p-4 text-center">
-          <p className="text-2xl font-bold text-gray-900">{goals}</p>
-          <p className="text-sm text-gray-500">Голы</p>
+        <div className="surface-entity-card p-4 text-center">
+          <p className="text-2xl font-bold text-slate-900">{goals}</p>
+          <p className="text-sm text-slate-600">Голы</p>
         </div>
-        <div className="rounded-xl border bg-white p-4 text-center">
-          <p className="text-2xl font-bold text-gray-900">{assists}</p>
-          <p className="text-sm text-gray-500">Передачи</p>
+        <div className="surface-entity-card p-4 text-center">
+          <p className="text-2xl font-bold text-slate-900">{assists}</p>
+          <p className="text-sm text-slate-600">Передачи</p>
         </div>
-        <div className="rounded-xl border bg-white p-4 text-center">
-          <p className="text-2xl font-bold text-gray-900">{penalties._sum.minutes ?? 0}</p>
-          <p className="text-sm text-gray-500">Штраф (мин)</p>
+        <div className="surface-entity-card p-4 text-center">
+          <p className="text-2xl font-bold text-slate-900">{penalties._sum.minutes ?? 0}</p>
+          <p className="text-sm text-slate-600">Штраф (мин)</p>
         </div>
       </div>
 
       <section>
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">История команд</h2>
-        <div className="rounded-xl border bg-white shadow-sm overflow-hidden">
+        <h2 className="text-lg font-semibold text-slate-900 mb-4">История команд</h2>
+        <div className="surface-table-wrap">
           <table className="w-full text-sm">
-            <thead className="bg-gray-50 border-b">
+            <thead className="bg-slate-100 border-b border-slate-200">
               <tr>
                 <th className="text-left px-4 py-3 font-medium text-gray-500">Сезон</th>
                 <th className="text-left px-4 py-3 font-medium text-gray-500">Команда</th>

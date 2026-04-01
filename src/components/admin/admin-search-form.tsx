@@ -14,8 +14,17 @@ export function AdminSearchForm({
   /** URL без параметра q (например `/admin/players` или `?team=id`) */
   resetHref?: string;
 }) {
+  const formKey = [
+    defaultQuery,
+    ...hiddenFields.map((h) => `${h.name}=${h.value}`),
+  ].join("|");
+
   return (
-    <form method="get" className="flex flex-col gap-3 sm:flex-row sm:items-end sm:flex-wrap">
+    <form
+      key={formKey}
+      method="get"
+      className="flex flex-col gap-3 sm:flex-row sm:items-end sm:flex-wrap"
+    >
       {hiddenFields.map((h) => (
         <input key={h.name} type="hidden" name={h.name} value={h.value} />
       ))}

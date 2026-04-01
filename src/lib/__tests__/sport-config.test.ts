@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { getSportConfig, getPositionsForSport, getEventTypesForSport, SPORT_CONFIGS } from "../sport-config";
+import {
+  getSportConfig,
+  getPositionsForSport,
+  getEventTypesForSport,
+  getPlayerRoleLabel,
+  SPORT_CONFIGS,
+} from "../sport-config";
 
 describe("getSportConfig", () => {
   it("returns hockey config", () => {
@@ -26,8 +32,16 @@ describe("getSportConfig", () => {
 describe("getPositionsForSport", () => {
   it("returns hockey positions", () => {
     const positions = getPositionsForSport("HOCKEY");
-    expect(positions.map((p) => p.value)).toContain("GOALIE");
-    expect(positions.map((p) => p.value)).toContain("FORWARD");
+    const values = positions.map((p) => p.value);
+    expect(values).toContain("GOALIE");
+    expect(values).toContain("FORWARD");
+    expect(values).toContain("DEFENDER");
+    expect(values).toHaveLength(3);
+  });
+
+  it("getPlayerRoleLabel resolves hockey roles", () => {
+    expect(getPlayerRoleLabel("HOCKEY", "FORWARD")).toBe("Нападающий");
+    expect(getPlayerRoleLabel("HOCKEY", "GOALIE")).toBe("Вратарь");
   });
 
   it("returns football positions", () => {

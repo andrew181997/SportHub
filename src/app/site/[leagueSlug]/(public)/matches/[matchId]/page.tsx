@@ -24,21 +24,21 @@ export default async function PublicMatchPage({
       events: {
         include: {
           player: {
-            select: { firstName: true, lastName: true, middleName: true },
+            select: { id: true, firstName: true, lastName: true, middleName: true },
           },
         },
       },
       penalties: {
         include: {
           player: {
-            select: { firstName: true, lastName: true, middleName: true },
+            select: { id: true, firstName: true, lastName: true, middleName: true },
           },
         },
       },
       goalieStats: {
         include: {
           player: {
-            select: { firstName: true, lastName: true, middleName: true },
+            select: { id: true, firstName: true, lastName: true, middleName: true },
           },
         },
       },

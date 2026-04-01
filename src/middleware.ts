@@ -14,9 +14,20 @@ function extractSubdomain(hostname: string): string | null {
 }
 
 export function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+
+  // Не переписывать API и статику: иначе /api/search → /site/{slug}/api/search (маршрута нет) и приходит text/html.
+  if (
+    pathname.startsWith("/api") ||
+    pathname.startsWith("/_next") ||
+    pathname === "/favicon.ico" ||
+    pathname.startsWith("/uploads")
+  ) {
+    return NextResponse.next();
+  }
+
   const hostname = request.headers.get("host") ?? "";
   const subdomain = extractSubdomain(hostname);
-  const { pathname } = request.nextUrl;
 
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set("x-pathname", pathname);
@@ -32,16 +43,18 @@ export function middleware(request: NextRequest) {
       );
     }
 
-    return NextResponse.rewrite(
-      new URL(`/platform${pathname}`, request.url),
-      { request: { headers: requestHeaders } }
-    );
+    const platformUrl = request.nextUrl.clone();
+    platformUrl.pathname = `/platform${pathname}`;
+    return NextResponse.rewrite(platformUrl, {
+      request: { headers: requestHeaders },
+    });
   }
 
-  return NextResponse.rewrite(
-    new URL(`/site/${subdomain}${pathname}`, request.url),
-    { request: { headers: requestHeaders } }
-  );
+  const siteUrl = request.nextUrl.clone();
+  siteUrl.pathname = `/site/${subdomain}${pathname}`;
+  return NextResponse.rewrite(siteUrl, {
+    request: { headers: requestHeaders },
+  });
 }
 
 export const config = {

@@ -3,20 +3,36 @@ import { prisma } from "@/lib/prisma";
 import { notFound } from "next/navigation";
 import { formatDateTime } from "@/lib/utils";
 import { MatchCreateForm } from "@/components/admin/match-create-form";
+import { ListPagination } from "@/components/public/list-pagination";
+import {
+  computeListPagination,
+  DEFAULT_LIST_PAGE_SIZE,
+  parseListPage,
+} from "@/lib/pagination";
 
 export default async function AdminMatchesPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ leagueSlug: string }>;
+  searchParams: Promise<{ page?: string }>;
 }) {
   const { leagueSlug } = await params;
+  const { page: pageRaw } = await searchParams;
   const league = await prisma.league.findUnique({ where: { slug: leagueSlug } });
   if (!league) notFound();
 
+  const page = parseListPage(pageRaw);
+  const where = { leagueId: league.id };
+  const total = await prisma.match.count({ where });
+  const meta = computeListPagination(page, DEFAULT_LIST_PAGE_SIZE, total);
+
   const [matches, tournaments, teams] = await Promise.all([
     prisma.match.findMany({
-      where: { leagueId: league.id },
+      where,
       orderBy: { datetime: "desc" },
+      skip: meta.skip,
+      take: meta.pageSize,
       include: {
         homeTeam: { select: { name: true } },
         awayTeam: { select: { name: true } },
@@ -58,33 +74,33 @@ export default async function AdminMatchesPage({
         <MatchCreateForm tournaments={tournaments} teams={teams} />
       </div>
 
-      <div className="mt-6 rounded-xl border bg-white shadow-sm overflow-hidden">
+      <div className="mt-6 rounded-xl border-2 border-slate-200 bg-white shadow-md overflow-hidden">
         <table className="w-full text-sm">
-          <thead className="bg-gray-50 border-b">
+          <thead className="bg-slate-100 border-b border-slate-200">
             <tr>
-              <th className="text-left px-4 py-3 font-medium text-gray-500">Дата</th>
-              <th className="text-left px-4 py-3 font-medium text-gray-500">Матч</th>
-              <th className="text-center px-4 py-3 font-medium text-gray-500">Счёт</th>
-              <th className="text-left px-4 py-3 font-medium text-gray-500">Турнир</th>
-              <th className="text-left px-4 py-3 font-medium text-gray-500">Статус</th>
-              <th className="text-right px-4 py-3 font-medium text-gray-500">Действия</th>
+              <th className="text-left px-4 py-3 font-medium text-slate-600">Дата</th>
+              <th className="text-left px-4 py-3 font-medium text-slate-600">Матч</th>
+              <th className="text-center px-4 py-3 font-medium text-slate-600">Счёт</th>
+              <th className="text-left px-4 py-3 font-medium text-slate-600">Турнир</th>
+              <th className="text-left px-4 py-3 font-medium text-slate-600">Статус</th>
+              <th className="text-right px-4 py-3 font-medium text-slate-600">Действия</th>
             </tr>
           </thead>
-          <tbody className="divide-y">
+          <tbody className="divide-y divide-slate-200">
             {matches.map((m) => (
-              <tr key={m.id} className="hover:bg-gray-50">
-                <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">
+              <tr key={m.id} className="hover:bg-slate-50/90">
+                <td className="px-4 py-3 text-slate-600 text-xs whitespace-nowrap">
                   {formatDateTime(m.datetime)}
                 </td>
-                <td className="px-4 py-3 font-medium text-gray-900">
+                <td className="px-4 py-3 font-medium text-slate-900">
                   {m.homeTeam.name} — {m.awayTeam.name}
                 </td>
-                <td className="px-4 py-3 text-center font-bold text-gray-900">
+                <td className="px-4 py-3 text-center font-bold text-slate-900">
                   {m.status === "FINISHED"
                     ? `${m.homeScore}:${m.awayScore}`
                     : "—"}
                 </td>
-                <td className="px-4 py-3 text-gray-500 text-xs">{m.tournament.name}</td>
+                <td className="px-4 py-3 text-slate-600 text-xs">{m.tournament.name}</td>
                 <td className="px-4 py-3">
                   <span className={`rounded px-2 py-0.5 text-xs font-medium ${statusColors[m.status]}`}>
                     {statusLabels[m.status]}
@@ -110,6 +126,8 @@ export default async function AdminMatchesPage({
           </tbody>
         </table>
       </div>
+
+      <ListPagination meta={meta} className="mt-6" />
     </div>
   );
 }

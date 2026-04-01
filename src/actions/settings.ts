@@ -1,43 +1,66 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
-import { siteConfigSchema } from "@/lib/validations/league";
+import { siteAppearanceSchema } from "@/lib/validations/league";
 import { requireLeagueContext } from "@/lib/tenant";
 import { uploadLeagueLogo } from "@/lib/upload";
 import { revalidatePath } from "next/cache";
 
+function revalidateLeagueSite(slug: string) {
+  /** Публичный сайт и админка живут под `/site/[slug]/…` (rewrite с поддомена). */
+  revalidatePath(`/site/${slug}`, "layout");
+  revalidatePath(`/site/${slug}/admin`, "layout");
+}
+
 export async function updateSiteConfig(data: unknown) {
   const league = await requireLeagueContext();
-  const parsed = siteConfigSchema.safeParse(data);
+  const parsed = siteAppearanceSchema.safeParse(data);
 
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message };
   }
 
+  const { footerText, ...colorsAndTheme } = parsed.data;
+
   await prisma.siteConfig.upsert({
     where: { leagueId: league.id },
-    create: { leagueId: league.id, ...parsed.data },
-    update: parsed.data,
+    create: {
+      leagueId: league.id,
+      ...colorsAndTheme,
+      footerText: footerText?.trim() ? footerText.trim() : null,
+    },
+    update: {
+      ...colorsAndTheme,
+      footerText: footerText?.trim() ? footerText.trim() : null,
+    },
   });
 
-  revalidatePath("/");
-  revalidatePath("/admin/settings");
+  revalidateLeagueSite(league.slug);
   return { success: true };
 }
 
-export async function updateLeagueInfo(formData: FormData) {
+export async function updateLeagueInfo(
+  formData: FormData
+): Promise<{ success: true } | { error: string }> {
   const league = await requireLeagueContext();
-  const name = formData.get("name") as string;
-  const description = formData.get("description") as string;
+  const name = String(formData.get("name") ?? "").trim();
+  const description = String(formData.get("description") ?? "").trim();
 
-  await prisma.league.update({
-    where: { id: league.id },
-    data: { name, description },
-  });
+  if (!name) {
+    return { error: "Укажите название лиги" };
+  }
 
-  revalidatePath("/");
-  revalidatePath("/admin/settings");
-  return { success: true };
+  try {
+    await prisma.league.update({
+      where: { id: league.id },
+      data: { name, description },
+    });
+
+    revalidateLeagueSite(league.slug);
+    return { success: true };
+  } catch {
+    return { error: "Не удалось сохранить данные" };
+  }
 }
 
 export async function uploadLogo(formData: FormData) {
@@ -55,8 +78,7 @@ export async function uploadLogo(formData: FormData) {
       data: { logo: url },
     });
 
-    revalidatePath("/");
-    revalidatePath("/admin/settings");
+    revalidateLeagueSite(league.slug);
     return { success: true, url };
   } catch (error) {
     return { error: error instanceof Error ? error.message : "Ошибка загрузки" };

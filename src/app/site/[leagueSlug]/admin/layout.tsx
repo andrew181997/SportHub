@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import Link from "next/link";
 import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
@@ -13,10 +14,12 @@ import {
   Image,
   Inbox,
   Settings,
+  BarChart3,
 } from "lucide-react";
 
 const navItems = [
   { href: "dashboard", label: "Дашборд", icon: LayoutDashboard },
+  { href: "statistics", label: "Статистика", icon: BarChart3 },
   { href: "tournaments", label: "Турниры", icon: Trophy },
   { href: "teams", label: "Команды", icon: Users },
   { href: "players", label: "Игроки", icon: UserCircle },
@@ -50,6 +53,7 @@ export default async function AdminLayout({
 
   const league = await prisma.league.findUnique({
     where: { slug: leagueSlug },
+    include: { siteConfig: true },
   });
 
   if (!league) redirect("/");
@@ -67,8 +71,12 @@ export default async function AdminLayout({
     redirect("/admin/login?error=no_access");
   }
 
+  const themeId = league.siteConfig?.theme ?? "default";
+  const primaryColor = league.siteConfig?.primaryColor ?? "#1d4ed8";
+  const secondaryColor = league.siteConfig?.secondaryColor ?? "#9333ea";
+
   return (
-    <div className="flex min-h-screen bg-gray-50">
+    <div className="flex min-h-screen bg-slate-200/50">
       <aside className="w-64 bg-white border-r flex flex-col">
         <div className="p-5 border-b">
           <h2 className="font-bold text-gray-900 truncate">{league.name}</h2>
@@ -78,7 +86,9 @@ export default async function AdminLayout({
           {navItems.map((item) => {
             if (
               membership.role === "EDITOR" &&
-              !["dashboard", "matches", "news", "media"].includes(item.href)
+              !["dashboard", "statistics", "matches", "news", "media"].includes(
+                item.href
+              )
             ) {
               return null;
             }
@@ -99,7 +109,18 @@ export default async function AdminLayout({
           <p className="text-xs text-gray-400">{membership.role}</p>
         </div>
       </aside>
-      <main className="flex-1 p-8">{children}</main>
+      <main
+        className="flex-1 p-8"
+        data-league-theme={themeId}
+        style={
+          {
+            "--league-primary": primaryColor,
+            "--league-secondary": secondaryColor,
+          } as CSSProperties
+        }
+      >
+        {children}
+      </main>
     </div>
   );
 }

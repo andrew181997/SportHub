@@ -1,4 +1,5 @@
 import type { MatchEventType, MatchStatus, SportType } from "@prisma/client";
+import Link from "next/link";
 import { getEventTypeLabel, getSportConfig, type SportConfig } from "@/lib/sport-config";
 import { formatDateTime } from "@/lib/utils";
 import {
@@ -7,7 +8,12 @@ import {
   SportGoalMarker,
 } from "@/components/match/protocol-icons";
 
-type PlayerMini = { firstName: string; lastName: string; middleName?: string | null };
+type PlayerMini = {
+  id: string;
+  firstName: string;
+  lastName: string;
+  middleName?: string | null;
+};
 
 export type ProtocolEventRow = {
   id: string;
@@ -53,6 +59,28 @@ function formatPlayerName(p: PlayerMini) {
 
 function formatAssistLine(p: PlayerMini) {
   return `${p.lastName} ${p.firstName}`;
+}
+
+function PlayerNameLink({ player }: { player: PlayerMini }) {
+  return (
+    <Link
+      href={`/players/${player.id}`}
+      className="text-blue-600 hover:text-blue-800 hover:underline font-medium"
+    >
+      {formatPlayerName(player)}
+    </Link>
+  );
+}
+
+function PlayerAssistLink({ player }: { player: PlayerMini }) {
+  return (
+    <Link
+      href={`/players/${player.id}`}
+      className="text-blue-600 hover:text-blue-800 hover:underline"
+    >
+      {formatAssistLine(player)}
+    </Link>
+  );
 }
 
 function periodHeading(sportType: SportType, period: number, cfg: SportConfig): string {
@@ -177,7 +205,7 @@ function TimelineEntryCard({
             <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
               <span className="text-xs font-medium text-gray-500 tabular-nums">{goal.time}</span>
               <span className="text-sm font-semibold text-gray-900 leading-snug">
-                {formatPlayerName(goal.player)}
+                <PlayerNameLink player={goal.player} />
               </span>
             </div>
             {assists.length > 0 && (
@@ -185,7 +213,7 @@ function TimelineEntryCard({
                 {assists.map((a) => (
                   <p key={a.id} className="text-xs text-gray-500 pl-2">
                     <span className="text-gray-400">{cfg.terminology.assist}: </span>
-                    {formatAssistLine(a.player)}
+                    <PlayerAssistLink player={a.player} />
                   </p>
                 ))}
               </div>
@@ -220,7 +248,10 @@ function TimelineEntryCard({
       <div className="min-w-0 flex-1 text-sm">
         <span className="text-xs text-gray-500 tabular-nums mr-2">{e.time}</span>
         <span className="font-medium text-gray-800">{label}</span>
-        <span className="text-gray-600"> — {formatPlayerName(e.player)}</span>
+        <span className="text-gray-600">
+          {" "}
+          — <PlayerNameLink player={e.player} />
+        </span>
       </div>
     </div>
   );
@@ -302,7 +333,7 @@ function PenaltyCard({
           {p.minutes} мин · {p.reason}
         </div>
         <div className="text-gray-600 text-xs mt-0.5">
-          {formatPlayerName(p.player)} · {side}
+          <PlayerNameLink player={p.player} /> · {side}
         </div>
       </div>
     </div>
@@ -365,7 +396,7 @@ export function MatchProtocolDisplay({
 
   return (
     <div className="space-y-8">
-      <div className="rounded-xl border bg-white p-6 shadow-sm">
+      <div className="surface-match p-6">
         <p className="text-sm text-gray-500">{formatDateTime(datetime)}</p>
         {venue && <p className="text-sm text-gray-500 mt-1">{venue}</p>}
         <p className="text-sm text-gray-600 mt-1">{tournamentName}</p>
@@ -401,7 +432,7 @@ export function MatchProtocolDisplay({
       </div>
 
       {status === "FINISHED" && timeline.length > 0 && (
-        <section className="rounded-xl border bg-white p-6 shadow-sm">
+        <section className="surface-match p-6">
           <h2 className="text-lg font-semibold text-gray-900 mb-6">
             Ход матча · {cfg.terminology.period}
           </h2>
@@ -445,7 +476,7 @@ export function MatchProtocolDisplay({
       )}
 
       {status === "FINISHED" && penaltiesSorted.length > 0 && (
-        <section className="rounded-xl border bg-white p-6 shadow-sm">
+        <section className="surface-match p-6">
           <h2 className="text-lg font-semibold text-gray-900 mb-6">
             Удаления и штрафы
           </h2>
@@ -511,7 +542,7 @@ export function MatchProtocolDisplay({
       )}
 
       {status === "FINISHED" && goalieStats.length > 0 && (
-        <section className="rounded-xl border bg-white p-6 shadow-sm">
+        <section className="surface-match p-6">
           <h2 className="text-lg font-semibold text-gray-900 mb-4">Вратари</h2>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -528,7 +559,7 @@ export function MatchProtocolDisplay({
                 {goalieStats.map((g, i) => (
                   <tr key={`${g.teamId}-${i}`}>
                     <td className="py-2 pr-4 font-medium text-gray-900">
-                      {formatPlayerName(g.player)}
+                      <PlayerNameLink player={g.player} />
                     </td>
                     <td className="py-2 pr-4 text-gray-600">
                       {g.teamId === homeTeamId ? homeTeamName : awayTeamName}

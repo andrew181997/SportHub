@@ -12,9 +12,21 @@ export default async function LeagueHomePage({
   const { leagueSlug } = await params;
   const league = await prisma.league.findUnique({
     where: { slug: leagueSlug },
+    include: { siteConfig: true },
   });
 
   if (!league) notFound();
+
+  const primary = league.siteConfig?.primaryColor ?? "#1d4ed8";
+  const secondary = league.siteConfig?.secondaryColor ?? "#9333ea";
+  const siteTheme = league.siteConfig?.theme ?? "default";
+
+  const heroBackground =
+    siteTheme === "sport"
+      ? `linear-gradient(135deg, ${primary} 0%, ${secondary} 100%)`
+      : siteTheme === "dark"
+        ? "linear-gradient(135deg, #0f172a 0%, #020617 100%)"
+        : `linear-gradient(135deg, ${primary} 0%, #1e293b 92%)`;
 
   const [upcomingMatches, recentResults, latestNews] = await Promise.all([
     prisma.match.findMany({
@@ -45,7 +57,10 @@ export default async function LeagueHomePage({
 
   return (
     <div>
-      <section className="bg-gradient-to-br from-gray-900 to-gray-800 text-white py-16 sm:py-24">
+      <section
+        className="text-white py-16 sm:py-24"
+        style={{ background: heroBackground }}
+      >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <h1 className="text-4xl sm:text-5xl font-extrabold">{league.name}</h1>
           {league.description && (
@@ -62,11 +77,15 @@ export default async function LeagueHomePage({
             {/* Ближайшие матчи */}
             <section>
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-                  <Calendar className="w-5 h-5 text-blue-600" />
+                <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+                  <Calendar className="w-5 h-5 shrink-0" style={{ color: primary }} />
                   Ближайшие матчи
                 </h2>
-                <Link href="/calendar" className="text-sm text-blue-600 hover:underline flex items-center gap-1">
+                <Link
+                  href="/calendar"
+                  className="text-sm hover:underline flex items-center gap-1 font-medium"
+                  style={{ color: primary }}
+                >
                   Все матчи <ArrowRight className="w-3 h-3" />
                 </Link>
               </div>
@@ -75,20 +94,20 @@ export default async function LeagueHomePage({
                   <Link
                     key={match.id}
                     href={`/matches/${match.id}`}
-                    className="rounded-lg border bg-white p-4 flex items-center justify-between hover:border-blue-300 hover:shadow-sm transition-shadow"
+                    className="surface-match p-4 flex items-center justify-between hover:border-blue-400/80 transition-colors"
                   >
                     <div className="flex items-center gap-4 flex-1 min-w-0">
-                      <span className="font-medium text-gray-900 text-sm flex-1 text-right truncate">
+                      <span className="font-semibold text-slate-900 text-sm flex-1 text-right truncate">
                         {match.homeTeam.name}
                       </span>
-                      <span className="text-xs text-gray-400 font-medium px-3 py-1 bg-gray-100 rounded shrink-0">
+                      <span className="text-xs text-slate-600 font-medium px-3 py-1 bg-slate-100 border border-slate-200 rounded shrink-0">
                         VS
                       </span>
-                      <span className="font-medium text-gray-900 text-sm flex-1 truncate">
+                      <span className="font-semibold text-slate-900 text-sm flex-1 truncate">
                         {match.awayTeam.name}
                       </span>
                     </div>
-                    <span className="text-xs text-gray-500 ml-4 whitespace-nowrap shrink-0">
+                    <span className="text-xs text-slate-600 ml-4 whitespace-nowrap shrink-0">
                       {formatDateLong(match.datetime)}
                     </span>
                   </Link>
@@ -102,11 +121,15 @@ export default async function LeagueHomePage({
             {/* Последние результаты */}
             <section>
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-                  <Trophy className="w-5 h-5 text-blue-600" />
+                <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+                  <Trophy className="w-5 h-5 shrink-0" style={{ color: primary }} />
                   Последние результаты
                 </h2>
-                <Link href="/results" className="text-sm text-blue-600 hover:underline flex items-center gap-1">
+                <Link
+                  href="/results"
+                  className="text-sm hover:underline flex items-center gap-1 font-medium"
+                  style={{ color: primary }}
+                >
                   Все результаты <ArrowRight className="w-3 h-3" />
                 </Link>
               </div>
@@ -115,16 +138,16 @@ export default async function LeagueHomePage({
                   <Link
                     key={match.id}
                     href={`/matches/${match.id}`}
-                    className="rounded-lg border bg-white p-4 flex items-center justify-between hover:border-blue-300 hover:shadow-sm transition-shadow"
+                    className="surface-match p-4 flex items-center justify-between hover:border-blue-400/80 transition-colors"
                   >
                     <div className="flex items-center gap-4 flex-1 min-w-0">
-                      <span className="font-medium text-gray-900 text-sm flex-1 text-right truncate">
+                      <span className="font-semibold text-slate-900 text-sm flex-1 text-right truncate">
                         {match.homeTeam.name}
                       </span>
-                      <span className="text-lg font-bold text-gray-900 px-3 shrink-0 tabular-nums">
+                      <span className="text-lg font-bold text-slate-900 px-3 shrink-0 tabular-nums">
                         {match.homeScore} : {match.awayScore}
                       </span>
-                      <span className="font-medium text-gray-900 text-sm flex-1 truncate">
+                      <span className="font-semibold text-slate-900 text-sm flex-1 truncate">
                         {match.awayTeam.name}
                       </span>
                     </div>
@@ -139,15 +162,15 @@ export default async function LeagueHomePage({
 
           {/* Новости */}
           <aside>
-            <h2 className="text-xl font-bold text-gray-900 mb-4">Новости</h2>
+            <h2 className="text-xl font-bold text-slate-900 mb-4">Новости</h2>
             <div className="space-y-4">
               {latestNews.map((article) => (
                 <Link
                   key={article.id}
                   href={`/news/${article.slug}`}
-                  className="block rounded-lg border bg-white p-4 hover:shadow-md transition-shadow"
+                  className="block surface-entity-card p-4 hover:shadow-lg transition-shadow"
                 >
-                  <h3 className="font-medium text-gray-900 text-sm line-clamp-2">
+                  <h3 className="font-medium text-slate-900 text-sm line-clamp-2">
                     {article.title}
                   </h3>
                   {article.publishedAt && (

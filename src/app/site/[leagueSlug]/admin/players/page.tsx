@@ -1,3 +1,4 @@
+import { unstable_noStore as noStore } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { notFound } from "next/navigation";
 import Link from "next/link";
@@ -5,18 +6,28 @@ import { PlayerCreateForm } from "@/components/admin/player-create-form";
 import { AdminSearchForm } from "@/components/admin/admin-search-form";
 import { getSportConfig } from "@/lib/sport-config";
 import type { Prisma } from "@prisma/client";
+import { ListPagination } from "@/components/public/list-pagination";
+import {
+  computeListPagination,
+  DEFAULT_LIST_PAGE_SIZE,
+  parseListPage,
+} from "@/lib/pagination";
+
+export const dynamic = "force-dynamic";
 
 export default async function AdminPlayersPage({
   params,
   searchParams,
 }: {
   params: Promise<{ leagueSlug: string }>;
-  searchParams: Promise<{ q?: string; team?: string }>;
+  searchParams: Promise<{ q?: string; team?: string; page?: string }>;
 }) {
+  noStore();
   const { leagueSlug } = await params;
-  const { q: qRaw, team: teamRaw } = await searchParams;
+  const { q: qRaw, team: teamRaw, page: pageRaw } = await searchParams;
   const q = qRaw?.trim();
   const teamFilter = teamRaw?.trim();
+  const page = parseListPage(pageRaw);
 
   const league = await prisma.league.findUnique({ where: { slug: leagueSlug } });
   if (!league) notFound();
@@ -51,9 +62,14 @@ export default async function AdminPlayersPage({
     ];
   }
 
+  const total = await prisma.player.count({ where });
+  const meta = computeListPagination(page, DEFAULT_LIST_PAGE_SIZE, total);
+
   const players = await prisma.player.findMany({
     where,
     orderBy: { lastName: "asc" },
+    skip: meta.skip,
+    take: meta.pageSize,
     include: {
       rosters: {
         take: 1,
@@ -65,6 +81,10 @@ export default async function AdminPlayersPage({
 
   const resetHref = teamFilter ? `?team=${encodeURIComponent(teamFilter)}` : "/admin/players";
   const hiddenFields = teamFilter ? [{ name: "team", value: teamFilter }] : [];
+
+  const pageQuery: Record<string, string | undefined> = {};
+  if (q) pageQuery.q = q;
+  if (teamFilter && filterTeam) pageQuery.team = teamFilter;
 
   return (
     <div>
@@ -101,24 +121,24 @@ export default async function AdminPlayersPage({
         />
       </div>
 
-      <div className="mt-4 rounded-xl border bg-white shadow-sm overflow-hidden">
+      <div className="mt-4 rounded-xl border-2 border-slate-200 bg-white shadow-md overflow-hidden">
         <table className="w-full text-sm">
-          <thead className="bg-gray-50 border-b">
+          <thead className="bg-slate-100 border-b border-slate-200">
             <tr>
-              <th className="text-left px-4 py-3 font-medium text-gray-500">Фамилия Имя</th>
-              <th className="text-left px-4 py-3 font-medium text-gray-500">Амплуа</th>
-              <th className="text-left px-4 py-3 font-medium text-gray-500">Команда</th>
-              <th className="text-left px-4 py-3 font-medium text-gray-500">Статус</th>
+              <th className="text-left px-4 py-3 font-medium text-slate-600">Фамилия Имя</th>
+              <th className="text-left px-4 py-3 font-medium text-slate-600">Амплуа</th>
+              <th className="text-left px-4 py-3 font-medium text-slate-600">Команда</th>
+              <th className="text-left px-4 py-3 font-medium text-slate-600">Статус</th>
             </tr>
           </thead>
-          <tbody className="divide-y">
+          <tbody className="divide-y divide-slate-200">
             {players.map((p) => (
-              <tr key={p.id} className="hover:bg-gray-50">
-                <td className="px-4 py-3 font-medium text-gray-900">
+              <tr key={p.id} className="hover:bg-slate-50/90">
+                <td className="px-4 py-3 font-medium text-slate-900">
                   {p.lastName} {p.firstName}
                 </td>
-                <td className="px-4 py-3 text-gray-500">{roleLabel(p.role)}</td>
-                <td className="px-4 py-3 text-gray-500">
+                <td className="px-4 py-3 text-slate-600">{roleLabel(p.role)}</td>
+                <td className="px-4 py-3 text-slate-600">
                   {p.rosters[0]?.team.name ?? "—"}
                 </td>
                 <td className="px-4 py-3">
@@ -140,6 +160,8 @@ export default async function AdminPlayersPage({
           </tbody>
         </table>
       </div>
+
+      <ListPagination meta={meta} query={pageQuery} className="mt-6" />
     </div>
   );
 }

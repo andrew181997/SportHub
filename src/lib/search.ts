@@ -1,25 +1,26 @@
 import { prisma } from "./prisma";
 
-function buildTsQuery(query: string): string {
-  return query
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean)
-    .map((word) => `${word}:*`)
-    .join(" & ");
-}
-
+/** Безопасный полнотекстовый поиск: plainto_tsquery не ломается на спецсимволах. */
 export async function searchPlayers(leagueId: string, query: string) {
   if (!query.trim()) return [];
-  const tsQuery = buildTsQuery(query);
+  const q = query.trim();
 
-  return prisma.$queryRaw`
+  return prisma.$queryRaw<
+    Array<{
+      id: string;
+      firstName: string;
+      lastName: string;
+      middleName: string | null;
+      photo: string | null;
+      role: string;
+    }>
+  >`
     SELECT id, "firstName", "lastName", "middleName", photo, role
     FROM "Player"
     WHERE "leagueId" = ${leagueId}
       AND "archivedAt" IS NULL
-      AND "searchVector" @@ to_tsquery('russian', ${tsQuery})
-    ORDER BY ts_rank("searchVector", to_tsquery('russian', ${tsQuery})) DESC
+      AND "searchVector" @@ plainto_tsquery('russian', ${q})
+    ORDER BY ts_rank_cd("searchVector", plainto_tsquery('russian', ${q})) DESC
     LIMIT 20
   `;
 }
@@ -43,16 +44,24 @@ export async function searchTeams(leagueId: string, query: string) {
 
 export async function searchNews(leagueId: string, query: string) {
   if (!query.trim()) return [];
-  const tsQuery = buildTsQuery(query);
+  const q = query.trim();
 
-  return prisma.$queryRaw`
+  return prisma.$queryRaw<
+    Array<{
+      id: string;
+      title: string;
+      slug: string;
+      coverImage: string | null;
+      publishedAt: Date;
+    }>
+  >`
     SELECT id, title, slug, "coverImage", "publishedAt"
     FROM "News"
     WHERE "leagueId" = ${leagueId}
       AND hidden = false
       AND "publishedAt" IS NOT NULL
-      AND "searchVector" @@ to_tsquery('russian', ${tsQuery})
-    ORDER BY ts_rank("searchVector", to_tsquery('russian', ${tsQuery})) DESC
+      AND "searchVector" @@ plainto_tsquery('russian', ${q})
+    ORDER BY ts_rank_cd("searchVector", plainto_tsquery('russian', ${q})) DESC
     LIMIT 20
   `;
 }

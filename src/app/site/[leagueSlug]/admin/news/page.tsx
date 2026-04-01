@@ -1,19 +1,35 @@
 import { prisma } from "@/lib/prisma";
 import { notFound } from "next/navigation";
 import { formatDateTime } from "@/lib/utils";
+import { ListPagination } from "@/components/public/list-pagination";
+import {
+  computeListPagination,
+  DEFAULT_LIST_PAGE_SIZE,
+  parseListPage,
+} from "@/lib/pagination";
 
 export default async function AdminNewsPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ leagueSlug: string }>;
+  searchParams: Promise<{ page?: string }>;
 }) {
   const { leagueSlug } = await params;
+  const { page: pageRaw } = await searchParams;
   const league = await prisma.league.findUnique({ where: { slug: leagueSlug } });
   if (!league) notFound();
 
+  const page = parseListPage(pageRaw);
+  const where = { leagueId: league.id };
+  const total = await prisma.news.count({ where });
+  const meta = computeListPagination(page, DEFAULT_LIST_PAGE_SIZE, total);
+
   const articles = await prisma.news.findMany({
-    where: { leagueId: league.id },
+    where,
     orderBy: { createdAt: "desc" },
+    skip: meta.skip,
+    take: meta.pageSize,
   });
 
   return (
@@ -22,21 +38,21 @@ export default async function AdminNewsPage({
         <h1 className="text-2xl font-bold text-gray-900">Новости</h1>
       </div>
 
-      <div className="mt-6 rounded-xl border bg-white shadow-sm overflow-hidden">
+      <div className="mt-6 rounded-xl border-2 border-slate-200 bg-white shadow-md overflow-hidden">
         <table className="w-full text-sm">
-          <thead className="bg-gray-50 border-b">
+          <thead className="bg-slate-100 border-b border-slate-200">
             <tr>
-              <th className="text-left px-4 py-3 font-medium text-gray-500">Заголовок</th>
-              <th className="text-left px-4 py-3 font-medium text-gray-500">Slug</th>
-              <th className="text-left px-4 py-3 font-medium text-gray-500">Статус</th>
-              <th className="text-left px-4 py-3 font-medium text-gray-500">Создана</th>
+              <th className="text-left px-4 py-3 font-medium text-slate-600">Заголовок</th>
+              <th className="text-left px-4 py-3 font-medium text-slate-600">Slug</th>
+              <th className="text-left px-4 py-3 font-medium text-slate-600">Статус</th>
+              <th className="text-left px-4 py-3 font-medium text-slate-600">Создана</th>
             </tr>
           </thead>
-          <tbody className="divide-y">
+          <tbody className="divide-y divide-slate-200">
             {articles.map((a) => (
-              <tr key={a.id} className="hover:bg-gray-50">
-                <td className="px-4 py-3 font-medium text-gray-900">{a.title}</td>
-                <td className="px-4 py-3 text-gray-500 font-mono text-xs">{a.slug}</td>
+              <tr key={a.id} className="hover:bg-slate-50/90">
+                <td className="px-4 py-3 font-medium text-slate-900">{a.title}</td>
+                <td className="px-4 py-3 text-slate-600 font-mono text-xs">{a.slug}</td>
                 <td className="px-4 py-3">
                   {a.hidden ? (
                     <span className="rounded bg-red-100 px-2 py-0.5 text-xs text-red-700">Скрыта</span>
@@ -46,7 +62,7 @@ export default async function AdminNewsPage({
                     <span className="rounded bg-yellow-100 px-2 py-0.5 text-xs text-yellow-700">Черновик</span>
                   )}
                 </td>
-                <td className="px-4 py-3 text-gray-500 text-xs">{formatDateTime(a.createdAt)}</td>
+                <td className="px-4 py-3 text-slate-600 text-xs">{formatDateTime(a.createdAt)}</td>
               </tr>
             ))}
             {articles.length === 0 && (
@@ -59,6 +75,8 @@ export default async function AdminNewsPage({
           </tbody>
         </table>
       </div>
+
+      <ListPagination meta={meta} className="mt-6" />
     </div>
   );
 }

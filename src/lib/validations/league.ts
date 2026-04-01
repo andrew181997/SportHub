@@ -32,7 +32,7 @@ export const playerSchema = z.object({
     .transform((s) => s.trim()),
   middleName: z.string().max(100).optional().or(z.literal("")),
   birthDate: z.coerce.date().optional(),
-  role: z.nativeEnum(PlayerRole).default(PlayerRole.SKATER),
+  role: z.nativeEnum(PlayerRole).default(PlayerRole.FORWARD),
 });
 
 export const matchSchema = z.object({
@@ -111,6 +111,23 @@ export const siteConfigSchema = z.object({
     })
   ),
   footerText: z.string().max(500).optional(),
+});
+
+const hex6 = z
+  .string()
+  .transform((s) => {
+    const t = s.trim();
+    if (/^[0-9a-fA-F]{6}$/.test(t)) return `#${t}`;
+    return t;
+  })
+  .refine((s) => /^#[0-9a-fA-F]{6}$/.test(s), "Цвет: укажите #RRGGBB (6 hex-символов)");
+
+/** Сохранение темы и палитры (без затирания navItems/sections в БД). */
+export const siteAppearanceSchema = z.object({
+  theme: z.enum(["default", "dark", "sport"]),
+  primaryColor: hex6,
+  secondaryColor: hex6,
+  footerText: z.string().max(500).optional().nullable(),
 });
 
 export type TournamentInput = z.infer<typeof tournamentSchema>;

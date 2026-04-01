@@ -67,18 +67,18 @@ export default async function TeamDetailPage({
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         <section>
           <h2 className="text-lg font-semibold text-gray-900 mb-4">Состав</h2>
-          <div className="rounded-xl border bg-white shadow-sm overflow-hidden">
+          <div className="surface-table-wrap">
             <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b">
+              <thead className="bg-slate-100 border-b border-slate-200">
                 <tr>
-                  <th className="text-left px-4 py-3 font-medium text-gray-500">Игрок</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-500">Позиция</th>
-                  <th className="text-center px-4 py-3 font-medium text-gray-500">№</th>
+                  <th className="text-left px-4 py-3 font-medium text-slate-600">Игрок</th>
+                  <th className="text-left px-4 py-3 font-medium text-slate-600">Позиция</th>
+                  <th className="text-center px-4 py-3 font-medium text-slate-600">№</th>
                 </tr>
               </thead>
-              <tbody className="divide-y">
+              <tbody className="divide-y divide-slate-200">
                 {team.rosters.map((r) => (
-                  <tr key={r.id} className="hover:bg-gray-50">
+                  <tr key={r.id} className="surface-player-row">
                     <td className="px-4 py-3">
                       <Link href={`/players/${r.player.id}`} className="font-medium text-blue-600 hover:underline">
                         {r.player.lastName} {r.player.firstName}
@@ -100,7 +100,7 @@ export default async function TeamDetailPage({
               <Link
                 key={m.id}
                 href={`/matches/${m.id}`}
-                className="rounded-lg border bg-white p-3 flex items-center justify-between text-sm hover:border-blue-300 hover:shadow-sm transition-shadow"
+                className="surface-match p-3 flex items-center justify-between text-sm hover:border-blue-400/80 transition-colors"
               >
                 <span className={m.homeTeamId === teamId ? "font-bold truncate pr-2" : "truncate pr-2"}>
                   {m.homeTeam.name}

@@ -18,7 +18,6 @@ export const SPORT_CONFIGS: Record<SportType, SportConfig> = {
   HOCKEY: {
     label: "Хоккей",
     positions: [
-      { value: "SKATER", label: "Полевой" },
       { value: "GOALIE", label: "Вратарь" },
       { value: "FORWARD", label: "Нападающий" },
       { value: "DEFENDER", label: "Защитник" },
@@ -146,6 +145,17 @@ export const SPORT_CONFIGS: Record<SportType, SportConfig> = {
     statsFields: ["goals", "assists", "fouls"],
   },
 };
+
+/** Подпись амплуа с учётом вида спорта; для значений вне пресета — поиск по всем видам. */
+export function getPlayerRoleLabel(sportType: SportType, role: PlayerRole): string {
+  const fromSport = SPORT_CONFIGS[sportType].positions.find((p) => p.value === role);
+  if (fromSport) return fromSport.label;
+  for (const cfg of Object.values(SPORT_CONFIGS)) {
+    const p = cfg.positions.find((x) => x.value === role);
+    if (p) return p.label;
+  }
+  return role;
+}
 
 export function getSportConfig(sportType: SportType): SportConfig {
   return SPORT_CONFIGS[sportType];
