@@ -81,16 +81,28 @@ export default async function AdminTeamsPage({
         <table className="w-full text-sm">
           <thead className="bg-slate-100 border-b border-slate-200">
             <tr>
+              <th className="text-left px-4 py-3 font-medium text-slate-600 w-14"> </th>
               <th className="text-left px-4 py-3 font-medium text-slate-600">Название</th>
               <th className="text-left px-4 py-3 font-medium text-slate-600">Город</th>
               <th className="text-right px-4 py-3 font-medium text-slate-600">Игроков</th>
               <th className="text-left px-4 py-3 font-medium text-slate-600">Статус</th>
-              <th className="text-right px-4 py-3 font-medium text-slate-600">Состав</th>
+              <th className="text-right px-4 py-3 font-medium text-slate-600">Действия</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200">
             {teams.map((team) => (
               <tr key={team.id} className="hover:bg-slate-50/90">
+                <td className="px-4 py-3 w-14">
+                  {team.logo ? (
+                    <img
+                      src={team.logo}
+                      alt={`Логотип ${team.name}`}
+                      className="h-9 w-9 rounded-lg object-cover border border-slate-200 bg-white"
+                    />
+                  ) : (
+                    <div className="h-9 w-9 rounded-lg bg-slate-100 border border-slate-200" />
+                  )}
+                </td>
                 <td className="px-4 py-3 font-medium text-slate-900">{team.name}</td>
                 <td className="px-4 py-3 text-slate-600">{team.city ?? "—"}</td>
                 <td className="px-4 py-3 text-right text-slate-600">{team._count.rosters}</td>
@@ -101,19 +113,25 @@ export default async function AdminTeamsPage({
                     <span className="rounded bg-green-100 px-2 py-0.5 text-xs text-green-700">Активная</span>
                   )}
                 </td>
-                <td className="px-4 py-3 text-right">
+                <td className="px-4 py-3 text-right space-x-3">
+                  <Link
+                    href={`/admin/teams/${team.id}`}
+                    className="text-blue-600 hover:text-blue-800 font-medium"
+                  >
+                    Изменить
+                  </Link>
                   <Link
                     href={`/admin/players?team=${encodeURIComponent(team.id)}`}
                     className="text-blue-600 hover:text-blue-800 font-medium"
                   >
-                    Игроки команды
+                    Игроки
                   </Link>
                 </td>
               </tr>
             ))}
             {teams.length === 0 && (
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-gray-400">
+                <td colSpan={6} className="px-4 py-8 text-center text-gray-400">
                   {q ? "Ничего не найдено." : "Нет команд"}
                 </td>
               </tr>

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
 import {
   LayoutDashboard,
@@ -37,6 +38,26 @@ export default async function SuperadminLayout({
   const session = await auth();
 
   if (!session?.user) {
+    redirect("/superadmin/login");
+  }
+
+  const dbUser = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: { status: true, email: true },
+  });
+
+  if (!dbUser) {
+    redirect("/superadmin/login");
+  }
+
+  if (dbUser.status === "PENDING") {
+    const base = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+    redirect(
+      `${base}/register/verify?email=${encodeURIComponent(dbUser.email)}`
+    );
+  }
+
+  if (dbUser.status === "BLOCKED") {
     redirect("/superadmin/login");
   }
 

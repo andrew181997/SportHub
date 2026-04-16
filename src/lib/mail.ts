@@ -1,5 +1,16 @@
 import nodemailer from "nodemailer";
 
+function requireSmtpConfig(): { user: string; pass: string } {
+  const user = process.env.SMTP_USER;
+  const pass = process.env.SMTP_PASSWORD;
+  if (!user?.trim() || !pass) {
+    throw new Error(
+      "SMTP не настроен: задайте SMTP_USER и SMTP_PASSWORD в переменных окружения"
+    );
+  }
+  return { user: user.trim(), pass };
+}
+
 const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST || "smtp.yandex.ru",
   port: Number(process.env.SMTP_PORT) || 465,
@@ -11,8 +22,10 @@ const transporter = nodemailer.createTransport({
 });
 
 export async function sendVerificationCode(to: string, code: string) {
+  const { user: smtpUser } = requireSmtpConfig();
+
   await transporter.sendMail({
-    from: `"SportHub" <${process.env.SMTP_USER}>`,
+    from: `"SportHub" <${smtpUser}>`,
     to,
     subject: "Код подтверждения SportHub",
     html: `
@@ -31,10 +44,11 @@ export async function sendVerificationCode(to: string, code: string) {
 }
 
 export async function sendPasswordResetLink(to: string, token: string) {
+  const { user: smtpUser } = requireSmtpConfig();
   const resetUrl = `${process.env.NEXT_PUBLIC_APP_URL}/reset-password?token=${token}`;
 
   await transporter.sendMail({
-    from: `"SportHub" <${process.env.SMTP_USER}>`,
+    from: `"SportHub" <${smtpUser}>`,
     to,
     subject: "Сброс пароля SportHub",
     html: `
@@ -54,8 +68,9 @@ export async function sendPasswordResetLink(to: string, token: string) {
 }
 
 export async function sendNotification(to: string, subject: string, html: string) {
+  const { user: smtpUser } = requireSmtpConfig();
   await transporter.sendMail({
-    from: `"SportHub" <${process.env.SMTP_USER}>`,
+    from: `"SportHub" <${smtpUser}>`,
     to,
     subject,
     html,

@@ -4,6 +4,11 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Trash2 } from "lucide-react";
 import { replaceMatchProtocol } from "@/actions/matches";
+import {
+  applyMmSsMask,
+  normalizeTimeForMask,
+  PROTOCOL_TIME_MMSS_RE,
+} from "@/lib/match-time-mask";
 import type { SportConfig } from "@/lib/sport-config";
 
 interface Player {
@@ -17,16 +22,17 @@ interface ProtocolEvent {
   type: string;
   playerId: string;
   teamId: string;
-  period: number;
+  /** Пустая строка пока пользователь стирает число в инпуте */
+  period: number | "";
   time: string;
 }
 
 interface PenaltyEntry {
   playerId: string;
   teamId: string;
-  minutes: number;
+  minutes: number | "";
   reason: string;
-  period: number;
+  period: number | "";
   time: string;
 }
 
@@ -39,6 +45,19 @@ export interface MatchProtocolInitial {
   penalties: PenaltyEntry[];
   /** Сохранённые сэйвы и «сухой» по id вратаря */
   goalieStats: { playerId: string; saves: number; shutout: boolean }[];
+  /** Судьи матча (из справочника лиги) */
+  referees?: { refereeId: string; role?: string | null }[];
+}
+
+interface LeagueRefereeOption {
+  id: string;
+  firstName: string;
+  lastName: string;
+}
+
+interface ProtocolRefereeRow {
+  refereeId: string;
+  role: string;
 }
 
 interface Props {
@@ -53,9 +72,9 @@ interface Props {
   initialProtocol?: MatchProtocolInitial | null;
   /** Матч уже в статусе «завершён» — подписи кнопки и сообщения как при правке. */
   hasFinishedResult?: boolean;
+  /** Судьи лиги для протокола */
+  leagueReferees?: LeagueRefereeOption[];
 }
-
-const TIME_RE = /^\d{1,2}:\d{2}$/;
 
 export function MatchProtocolForm({
   matchId,
@@ -68,29 +87,70 @@ export function MatchProtocolForm({
   sportConfig,
   initialProtocol,
   hasFinishedResult = false,
+  leagueReferees = [],
 }: Props) {
   const router = useRouter();
-  const [homeScore, setHomeScore] = useState(initialProtocol?.homeScore ?? 0);
-  const [awayScore, setAwayScore] = useState(initialProtocol?.awayScore ?? 0);
+  const [homeScoreStr, setHomeScoreStr] = useState(() =>
+    String(initialProtocol?.homeScore ?? 0)
+  );
+  const [awayScoreStr, setAwayScoreStr] = useState(() =>
+    String(initialProtocol?.awayScore ?? 0)
+  );
   const [overtime, setOvertime] = useState(initialProtocol?.overtime ?? false);
   const [shootout, setShootout] = useState(initialProtocol?.shootout ?? false);
   const [events, setEvents] = useState<ProtocolEvent[]>(() =>
-    (initialProtocol?.events ?? []).map((e) => ({ ...e }))
+    (initialProtocol?.events ?? []).map((e) => ({
+      ...e,
+      time: normalizeTimeForMask(e.time),
+    }))
   );
   const [penalties, setPenalties] = useState<PenaltyEntry[]>(() =>
-    (initialProtocol?.penalties ?? []).map((p) => ({ ...p }))
+    (initialProtocol?.penalties ?? []).map((p) => ({
+      ...p,
+      time: normalizeTimeForMask(p.time),
+    }))
   );
   const [goalieFields, setGoalieFields] = useState<
-    Record<string, { saves: number; shutout: boolean }>
+    Record<string, { savesStr: string; shutout: boolean }>
   >(() => {
-    const m: Record<string, { saves: number; shutout: boolean }> = {};
+    const m: Record<string, { savesStr: string; shutout: boolean }> = {};
     for (const g of initialProtocol?.goalieStats ?? []) {
-      m[g.playerId] = { saves: g.saves, shutout: g.shutout };
+      m[g.playerId] = { savesStr: String(g.saves), shutout: g.shutout };
     }
     return m;
   });
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
+
+  const [protocolReferees, setProtocolReferees] = useState<ProtocolRefereeRow[]>(() =>
+    (initialProtocol?.referees ?? []).map((r) => ({
+      refereeId: r.refereeId,
+      role: r.role?.trim() ?? "",
+    }))
+  );
+
+  const addProtocolReferee = () => {
+    setProtocolReferees([
+      ...protocolReferees,
+      { refereeId: leagueReferees[0]?.id ?? "", role: "" },
+    ]);
+  };
+
+  const removeProtocolReferee = (index: number) => {
+    setProtocolReferees(protocolReferees.filter((_, i) => i !== index));
+  };
+
+  const updateProtocolReferee = (
+    index: number,
+    field: keyof ProtocolRefereeRow,
+    value: string
+  ) => {
+    const next = [...protocolReferees];
+    const row = { ...next[index]! };
+    row[field] = value;
+    next[index] = row;
+    setProtocolReferees(next);
+  };
 
   const addEvent = () => {
     setEvents([
@@ -156,27 +216,111 @@ export function MatchProtocolForm({
     setSaving(true);
     setMessage("");
 
+    const homeTrim = homeScoreStr.trim();
+    const awayTrim = awayScoreStr.trim();
+    if (homeTrim === "" || awayTrim === "") {
+      setMessage("Ошибка: укажите счёт обеих команд.");
+      setSaving(false);
+      return;
+    }
+    const homeScore = parseInt(homeTrim, 10);
+    const awayScore = parseInt(awayTrim, 10);
+    if (
+      Number.isNaN(homeScore) ||
+      Number.isNaN(awayScore) ||
+      homeScore < 0 ||
+      awayScore < 0
+    ) {
+      setMessage("Ошибка: счёт должен быть неотрицательным целым числом.");
+      setSaving(false);
+      return;
+    }
+
+    const incompleteEvent = events.find((e) => {
+      const hasAny = Boolean(e.playerId || e.time.trim());
+      if (!hasAny) return false;
+      return !(
+        e.playerId &&
+        e.period !== "" &&
+        e.time.trim() &&
+        PROTOCOL_TIME_MMSS_RE.test(e.time.trim())
+      );
+    });
+    if (incompleteEvent) {
+      setMessage(
+        "Ошибка: в событиях укажите игрока, период и время (mm:ss, четыре цифры), либо удалите неполную строку."
+      );
+      setSaving(false);
+      return;
+    }
+
+    const incompletePenalty = penalties.find((p) => {
+      const hasAny = Boolean(p.playerId || p.time.trim() || p.reason.trim());
+      if (!hasAny) return false;
+      return !(
+        p.playerId &&
+        p.period !== "" &&
+        p.minutes !== "" &&
+        p.time.trim() &&
+        PROTOCOL_TIME_MMSS_RE.test(p.time.trim()) &&
+        p.reason.trim()
+      );
+    });
+    if (incompletePenalty) {
+      setMessage(
+        "Ошибка: в штрафах укажите игрока, минуты, период, причину и время (mm:ss, четыре цифры), либо удалите неполную строку."
+      );
+      setSaving(false);
+      return;
+    }
+
     const validEvents = events.filter(
-      (e) => e.playerId && e.time && TIME_RE.test(e.time.trim())
+      (e) =>
+        e.playerId &&
+        e.period !== "" &&
+        e.time &&
+        PROTOCOL_TIME_MMSS_RE.test(e.time.trim())
     );
     const validPenalties = penalties.filter(
-      (p) => p.playerId && p.time && TIME_RE.test(p.time.trim()) && p.reason.trim()
+      (p) =>
+        p.playerId &&
+        p.period !== "" &&
+        p.minutes !== "" &&
+        p.time &&
+        PROTOCOL_TIME_MMSS_RE.test(p.time.trim()) &&
+        p.reason.trim()
     );
 
-    const goalieStats = goalies.map((goalie) => {
+    const goalieStats: {
+      playerId: string;
+      teamId: string;
+      saves: number;
+      goalsAgainst: number;
+      shutout: boolean;
+    }[] = [];
+    for (const goalie of goalies) {
       const teamId = homePlayers.some((p) => p.id === goalie.id)
         ? homeTeamId
         : awayTeamId;
       const goalsAgainst = teamId === homeTeamId ? awayScore : homeScore;
-      const f = goalieFields[goalie.id] ?? { saves: 0, shutout: false };
-      return {
+      const f = goalieFields[goalie.id] ?? { savesStr: "0", shutout: false };
+      const savesTrim = f.savesStr.trim();
+      const savesParsed = savesTrim === "" ? 0 : parseInt(savesTrim, 10);
+      if (Number.isNaN(savesParsed) || savesParsed < 0) {
+        setMessage("Ошибка: укажите корректное неотрицательное число сэйвов.");
+        setSaving(false);
+        return;
+      }
+      goalieStats.push({
         playerId: goalie.id,
         teamId,
-        saves: f.saves,
+        saves: savesParsed,
         goalsAgainst,
         shutout: goalsAgainst === 0 && f.shutout,
-      };
-    });
+      });
+    }
+
+    const validReferees = protocolReferees.filter((r) => r.refereeId.trim() !== "");
 
     const result = await replaceMatchProtocol(matchId, {
       homeScore,
@@ -187,18 +331,22 @@ export function MatchProtocolForm({
         type: e.type as never,
         playerId: e.playerId,
         teamId: e.teamId,
-        period: e.period,
+        period: Number(e.period),
         time: e.time.trim(),
       })),
       penalties: validPenalties.map((p) => ({
         playerId: p.playerId,
         teamId: p.teamId,
-        minutes: p.minutes,
+        minutes: Number(p.minutes),
         reason: p.reason.trim(),
-        period: p.period,
+        period: Number(p.period),
         time: p.time.trim(),
       })),
       goalieStats,
+      referees: validReferees.map((r) => ({
+        refereeId: r.refereeId,
+        role: r.role.trim() || undefined,
+      })),
     });
 
     if ("error" in result && result.error) {
@@ -226,8 +374,9 @@ export function MatchProtocolForm({
             <input
               type="number"
               min={0}
-              value={homeScore}
-              onChange={(e) => setHomeScore(Number(e.target.value))}
+              step={1}
+              value={homeScoreStr}
+              onChange={(e) => setHomeScoreStr(e.target.value)}
               className="w-20 h-16 text-center text-3xl font-bold rounded-lg border border-gray-300 focus:border-blue-500 outline-none"
             />
           </div>
@@ -237,8 +386,9 @@ export function MatchProtocolForm({
             <input
               type="number"
               min={0}
-              value={awayScore}
-              onChange={(e) => setAwayScore(Number(e.target.value))}
+              step={1}
+              value={awayScoreStr}
+              onChange={(e) => setAwayScoreStr(e.target.value)}
               className="w-20 h-16 text-center text-3xl font-bold rounded-lg border border-gray-300 focus:border-blue-500 outline-none"
             />
           </div>
@@ -265,6 +415,59 @@ export function MatchProtocolForm({
         </div>
       </div>
 
+      <div className="rounded-xl border bg-white p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold">Судьи</h3>
+          <button
+            type="button"
+            onClick={addProtocolReferee}
+            disabled={leagueReferees.length === 0}
+            className="flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700 disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <Plus className="w-4 h-4" /> Добавить
+          </button>
+        </div>
+        {leagueReferees.length === 0 ? (
+          <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+            В лиге пока нет судей в справочнике. Добавьте их в разделе «Судьи» в админке.
+          </p>
+        ) : protocolReferees.length === 0 ? (
+          <p className="text-sm text-gray-400 text-center py-2">
+            Судьи не назначены — по желанию нажмите «Добавить».
+          </p>
+        ) : null}
+        {protocolReferees.map((row, i) => (
+          <div key={i} className="flex items-center gap-2 mb-3 flex-wrap">
+            <select
+              value={row.refereeId}
+              onChange={(e) => updateProtocolReferee(i, "refereeId", e.target.value)}
+              className="rounded-lg border border-gray-300 px-2 py-1.5 text-sm flex-1 min-w-[180px]"
+            >
+              <option value="">— Выберите судью —</option>
+              {leagueReferees.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.lastName} {r.firstName}
+                </option>
+              ))}
+            </select>
+            <input
+              type="text"
+              value={row.role}
+              onChange={(e) => updateProtocolReferee(i, "role", e.target.value)}
+              className="flex-1 min-w-[120px] rounded-lg border border-gray-300 px-2 py-1.5 text-sm"
+              placeholder="Роль (главный, линейный…)"
+            />
+            <button
+              type="button"
+              onClick={() => removeProtocolReferee(i)}
+              className="p-1.5 text-red-400 hover:text-red-600"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          </div>
+        ))}
+      </div>
+
       {goalies.length > 0 && (
         <div className="rounded-xl border bg-white p-6">
           <h3 className="text-lg font-semibold mb-4">Вратари</h3>
@@ -272,7 +475,7 @@ export function MatchProtocolForm({
             {goalies.map((g) => {
               const teamId = homePlayers.some((p) => p.id === g.id) ? homeTeamId : awayTeamId;
               const name = teamId === homeTeamId ? homeTeamName : awayTeamName;
-              const f = goalieFields[g.id] ?? { saves: 0, shutout: false };
+              const f = goalieFields[g.id] ?? { savesStr: "0", shutout: false };
               return (
                 <div
                   key={g.id}
@@ -287,13 +490,14 @@ export function MatchProtocolForm({
                     <input
                       type="number"
                       min={0}
-                      value={f.saves}
+                      step={1}
+                      value={f.savesStr}
                       onChange={(e) =>
                         setGoalieFields((prev) => ({
                           ...prev,
                           [g.id]: {
                             ...f,
-                            saves: Number(e.target.value) || 0,
+                            savesStr: e.target.value,
                           },
                         }))
                       }
@@ -378,16 +582,29 @@ export function MatchProtocolForm({
               type="number"
               min={1}
               max={sportConfig.terminology.periods + 2}
-              value={event.period}
-              onChange={(e) => updateEvent(i, "period", Number(e.target.value))}
+              value={event.period === "" ? "" : event.period}
+              onChange={(e) => {
+                const v = e.target.value;
+                if (v === "") updateEvent(i, "period", "");
+                else {
+                  const n = parseInt(v, 10);
+                  if (!Number.isNaN(n)) updateEvent(i, "period", n);
+                }
+              }}
               className="w-16 rounded-lg border border-gray-300 px-2 py-1.5 text-sm text-center"
             />
             <input
               type="text"
+              inputMode="numeric"
+              autoComplete="off"
+              maxLength={5}
+              title="Время в периоде: четыре цифры, формат mm:ss (например 05:30)"
               value={event.time}
-              onChange={(e) => updateEvent(i, "time", e.target.value)}
-              className="w-20 rounded-lg border border-gray-300 px-2 py-1.5 text-sm text-center"
-              placeholder="MM:SS"
+              onChange={(e) =>
+                updateEvent(i, "time", applyMmSsMask(event.time, e.target.value))
+              }
+              className="w-[4.5rem] rounded-lg border border-gray-300 px-2 py-1.5 text-sm text-center tabular-nums"
+              placeholder="mm:ss"
             />
             <button
               type="button"
@@ -443,8 +660,15 @@ export function MatchProtocolForm({
             <input
               type="number"
               min={1}
-              value={pen.minutes}
-              onChange={(e) => updatePenaltyEntry(i, "minutes", Number(e.target.value))}
+              value={pen.minutes === "" ? "" : pen.minutes}
+              onChange={(e) => {
+                const v = e.target.value;
+                if (v === "") updatePenaltyEntry(i, "minutes", "");
+                else {
+                  const n = parseInt(v, 10);
+                  if (!Number.isNaN(n)) updatePenaltyEntry(i, "minutes", n);
+                }
+              }}
               className="w-16 rounded-lg border border-gray-300 px-2 py-1.5 text-sm text-center"
             />
             <input
@@ -457,16 +681,29 @@ export function MatchProtocolForm({
             <input
               type="number"
               min={1}
-              value={pen.period}
-              onChange={(e) => updatePenaltyEntry(i, "period", Number(e.target.value))}
+              value={pen.period === "" ? "" : pen.period}
+              onChange={(e) => {
+                const v = e.target.value;
+                if (v === "") updatePenaltyEntry(i, "period", "");
+                else {
+                  const n = parseInt(v, 10);
+                  if (!Number.isNaN(n)) updatePenaltyEntry(i, "period", n);
+                }
+              }}
               className="w-16 rounded-lg border border-gray-300 px-2 py-1.5 text-sm text-center"
             />
             <input
               type="text"
+              inputMode="numeric"
+              autoComplete="off"
+              maxLength={5}
+              title="Время в периоде: четыре цифры, формат mm:ss (например 05:30)"
               value={pen.time}
-              onChange={(e) => updatePenaltyEntry(i, "time", e.target.value)}
-              className="w-20 rounded-lg border border-gray-300 px-2 py-1.5 text-sm text-center"
-              placeholder="MM:SS"
+              onChange={(e) =>
+                updatePenaltyEntry(i, "time", applyMmSsMask(pen.time, e.target.value))
+              }
+              className="w-[4.5rem] rounded-lg border border-gray-300 px-2 py-1.5 text-sm text-center tabular-nums"
+              placeholder="mm:ss"
             />
             <button
               type="button"

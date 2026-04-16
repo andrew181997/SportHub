@@ -23,6 +23,21 @@ export default async function AdminTournamentDetailPage({
 
   if (!tournament) notFound();
 
+  const playoffSeriesList = await prisma.playoffSeries.findMany({
+    where: { tournamentId: tournament.id },
+    orderBy: { createdAt: "asc" },
+    include: {
+      teamA: { select: { id: true, name: true } },
+      teamB: { select: { id: true, name: true } },
+    },
+  });
+
+  const PLAYOFF_PAIRING_LABELS: Record<string, string> = {
+    SEEDING_1_8: "По посеву (1 vs 8, 2 vs 7, …)",
+    SEEDING_ADJACENT: "Соседние места (1–2, 3–4, …)",
+    MANUAL: "Вручную",
+  };
+
   const events = await prisma.matchEvent.findMany({
     where: {
       match: {
@@ -94,9 +109,60 @@ export default async function AdminTournamentDetailPage({
                 <span className="rounded bg-green-100 px-2 py-0.5 text-xs text-green-700">Активный</span>
               )}
             </p>
+            {tournament.type === "PLAYOFF" && (
+              <div className="mt-3 rounded-lg border border-violet-200 bg-violet-50/80 px-3 py-2 text-sm text-violet-950">
+                <p>
+                  <span className="font-medium">Плей-офф:</span>{" "}
+                  {tournament.playoffPairing
+                    ? PLAYOFF_PAIRING_LABELS[tournament.playoffPairing] ?? tournament.playoffPairing
+                    : "—"}
+                  {tournament.seriesWinsToWin != null ? (
+                    <>
+                      {" "}
+                      · до {tournament.seriesWinsToWin}{" "}
+                      {tournament.seriesWinsToWin === 1
+                        ? "победы в серии"
+                        : "побед в серии"}
+                    </>
+                  ) : null}
+                </p>
+              </div>
+            )}
           </div>
         </div>
       </div>
+
+      {tournament.type === "PLAYOFF" && playoffSeriesList.length > 0 && (
+        <section className="mt-8">
+          <h2 className="text-lg font-semibold text-gray-900">Серии плей-офф</h2>
+          <p className="text-sm text-gray-500 mt-1">
+            Матчи серии создаются в разделе «Матчи» (новая серия или продолжение существующей).
+          </p>
+          <ul className="mt-3 space-y-2 text-sm">
+            {playoffSeriesList.map((s) => (
+              <li
+                key={s.id}
+                className="rounded-lg border border-gray-200 bg-white px-3 py-2 flex flex-wrap items-center justify-between gap-2"
+              >
+                <span>
+                  {s.label ? `${s.label} · ` : ""}
+                  <span className="font-medium">{s.teamA.name}</span>
+                  {" — "}
+                  <span className="font-medium">{s.teamB.name}</span>
+                </span>
+                {s.winnerTeamId ? (
+                  <span className="text-xs font-medium text-emerald-700">
+                    Победитель серии:{" "}
+                    {s.winnerTeamId === s.teamA.id ? s.teamA.name : s.teamB.name}
+                  </span>
+                ) : (
+                  <span className="text-xs text-gray-500">Серия не завершена</span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <section className="mt-10">
         <h2 className="text-lg font-semibold text-gray-900">Турнирная таблица</h2>

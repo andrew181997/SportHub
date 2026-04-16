@@ -46,9 +46,10 @@ export async function GET(request: NextRequest) {
 
   const league = await prisma.league.findUnique({
     where: { slug: subdomain },
+    select: { id: true, status: true },
   });
 
-  if (!league) {
+  if (!league || league.status === "BLOCKED") {
     return jsonNoStore({ players: [], teams: [], news: [] });
   }
 

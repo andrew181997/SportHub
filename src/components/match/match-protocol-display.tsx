@@ -356,6 +356,7 @@ export function MatchProtocolDisplay({
   events,
   penalties,
   goalieStats,
+  referees,
 }: {
   sportType: SportType;
   status: MatchStatus;
@@ -372,6 +373,8 @@ export function MatchProtocolDisplay({
   events: ProtocolEventRow[];
   penalties: ProtocolPenaltyRow[];
   goalieStats: ProtocolGoalieRow[];
+  /** Судьи матча (после сохранения протокола) */
+  referees?: { firstName: string; lastName: string; role: string | null }[];
 }) {
   const cfg = getSportConfig(sportType);
   const timeline = buildTimeline(events);
@@ -400,6 +403,20 @@ export function MatchProtocolDisplay({
         <p className="text-sm text-gray-500">{formatDateTime(datetime)}</p>
         {venue && <p className="text-sm text-gray-500 mt-1">{venue}</p>}
         <p className="text-sm text-gray-600 mt-1">{tournamentName}</p>
+
+        {referees && referees.length > 0 && (
+          <div className="mt-4 text-sm text-gray-600">
+            <p className="font-medium text-gray-800 mb-1">Судьи</p>
+            <ul className="space-y-0.5">
+              {referees.map((r, i) => (
+                <li key={i}>
+                  {r.lastName} {r.firstName}
+                  {r.role ? ` — ${r.role}` : ""}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         <div className="mt-6 flex flex-col sm:flex-row sm:items-center sm:justify-center gap-4 sm:gap-8">
           <span className="text-lg font-semibold text-gray-900 text-center sm:text-right sm:flex-1">

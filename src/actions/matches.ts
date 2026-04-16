@@ -2,15 +2,25 @@
 
 import { prisma } from "@/lib/prisma";
 import {
-  matchSchema,
+  matchCreateInputSchema,
   matchResultSchema,
   matchEventSchema,
   penaltySchema,
 } from "@/lib/validations/league";
 import { requireLeagueContext } from "@/lib/tenant";
 import { recalculateStandings } from "@/lib/standings";
+import { recalculatePlayoffSeries } from "@/lib/playoff-series";
 import { revalidatePath } from "next/cache";
 import { z } from "zod/v4";
+
+const matchProtocolRefereeSchema = z.object({
+  refereeId: z.string().min(1),
+  role: z
+    .string()
+    .max(100)
+    .optional()
+    .transform((s) => (s == null || s.trim() === "" ? undefined : s.trim())),
+});
 
 const protocolBundleSchema = z.object({
   homeScore: z.coerce.number().min(0),
@@ -28,13 +38,14 @@ const protocolBundleSchema = z.object({
       shutout: z.boolean(),
     })
   ),
+  referees: z.array(matchProtocolRefereeSchema).default([]),
 });
 
 export type MatchProtocolBundle = z.infer<typeof protocolBundleSchema>;
 
 export async function createMatch(formData: FormData) {
   const league = await requireLeagueContext();
-  const parsed = matchSchema.safeParse(Object.fromEntries(formData));
+  const parsed = matchCreateInputSchema.safeParse(Object.fromEntries(formData));
 
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message };
@@ -44,8 +55,71 @@ export async function createMatch(formData: FormData) {
     return { error: "Команда не может играть сама с собой" };
   }
 
+  const tournament = await prisma.tournament.findFirst({
+    where: { id: parsed.data.tournamentId, leagueId: league.id },
+  });
+  if (!tournament) {
+    return { error: "Турнир не найден" };
+  }
+
+  let playoffSeriesId: string | null = null;
+
+  if (tournament.type === "PLAYOFF") {
+    const mode = parsed.data.playoffSeriesMode;
+    if (mode === "existing") {
+      if (!parsed.data.playoffSeriesId) {
+        return { error: "Выберите серию плей-офф" };
+      }
+      const series = await prisma.playoffSeries.findFirst({
+        where: {
+          id: parsed.data.playoffSeriesId,
+          tournamentId: tournament.id,
+        },
+      });
+      if (!series) {
+        return { error: "Серия плей-офф не найдена" };
+      }
+      if (series.winnerTeamId) {
+        return { error: "Серия уже завершена — новый матч в неё добавить нельзя" };
+      }
+      const h = parsed.data.homeTeamId;
+      const a = parsed.data.awayTeamId;
+      const pairOk =
+        (h === series.teamAId && a === series.teamBId) ||
+        (h === series.teamBId && a === series.teamAId);
+      if (!pairOk) {
+        return {
+          error:
+            "Команды матча должны совпадать с участниками выбранной серии (хозяева и гости в любом порядке)",
+        };
+      }
+      playoffSeriesId = series.id;
+    } else {
+      const series = await prisma.playoffSeries.create({
+        data: {
+          tournamentId: tournament.id,
+          teamAId: parsed.data.homeTeamId,
+          teamBId: parsed.data.awayTeamId,
+          winsToWin: tournament.seriesWinsToWin ?? 2,
+          label: parsed.data.newSeriesLabel,
+        },
+      });
+      playoffSeriesId = series.id;
+    }
+  }
+
   await prisma.match.create({
-    data: { ...parsed.data, leagueId: league.id },
+    data: {
+      datetime: parsed.data.datetime,
+      homeTeamId: parsed.data.homeTeamId,
+      awayTeamId: parsed.data.awayTeamId,
+      tournamentId: parsed.data.tournamentId,
+      groupId: parsed.data.groupId,
+      venue: parsed.data.venue,
+      round: parsed.data.round,
+      leagueId: league.id,
+      playoffSeriesId,
+    },
   });
 
   revalidatePath("/admin/matches");
@@ -69,6 +143,9 @@ export async function updateMatchResult(matchId: string, formData: FormData) {
   });
 
   await recalculateStandings(match.tournamentId);
+  if (match.playoffSeriesId) {
+    await recalculatePlayoffSeries(match.playoffSeriesId);
+  }
 
   revalidatePath("/admin/matches");
   revalidatePath("/standings");
@@ -94,6 +171,7 @@ export async function replaceMatchProtocol(
       tournamentId: true,
       homeTeamId: true,
       awayTeamId: true,
+      playoffSeriesId: true,
     },
   });
   if (!match) {
@@ -117,6 +195,21 @@ export async function replaceMatchProtocol(
     }
   }
 
+  const refereeRows = parsed.data.referees ?? [];
+  const refIdList = refereeRows.map((r) => r.refereeId);
+  if (new Set(refIdList).size !== refIdList.length) {
+    return { error: "Один судья не может быть указан в протоколе дважды" };
+  }
+  const refereeIds = [...new Set(refereeRows.map((r) => r.refereeId))];
+  if (refereeIds.length > 0) {
+    const cnt = await prisma.referee.count({
+      where: { leagueId: league.id, id: { in: refereeIds } },
+    });
+    if (cnt !== refereeIds.length) {
+      return { error: "В протоколе указан судья не из этой лиги" };
+    }
+  }
+
   await prisma.$transaction(async (tx) => {
     await tx.match.update({
       where: { id: matchId },
@@ -131,6 +224,7 @@ export async function replaceMatchProtocol(
     await tx.matchEvent.deleteMany({ where: { matchId } });
     await tx.penalty.deleteMany({ where: { matchId } });
     await tx.goalieStats.deleteMany({ where: { matchId } });
+    await tx.matchReferee.deleteMany({ where: { matchId } });
 
     if (parsed.data.events.length > 0) {
       await tx.matchEvent.createMany({
@@ -147,9 +241,22 @@ export async function replaceMatchProtocol(
         data: parsed.data.goalieStats.map((g) => ({ ...g, matchId })),
       });
     }
+    if (refereeRows.length > 0) {
+      await tx.matchReferee.createMany({
+        data: refereeRows.map((r, i) => ({
+          matchId,
+          refereeId: r.refereeId,
+          role: r.role ?? null,
+          sortOrder: i,
+        })),
+      });
+    }
   });
 
   await recalculateStandings(match.tournamentId);
+  if (match.playoffSeriesId) {
+    await recalculatePlayoffSeries(match.playoffSeriesId);
+  }
 
   revalidatePath("/admin/matches");
   revalidatePath(`/admin/matches/${matchId}`);

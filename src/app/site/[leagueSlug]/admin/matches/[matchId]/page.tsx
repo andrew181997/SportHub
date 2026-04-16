@@ -2,7 +2,9 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { notFound } from "next/navigation";
 import { MatchProtocolForm } from "@/components/admin/match-protocol-form";
+import { PlayoffSeriesStatus } from "@/components/match/playoff-series-status";
 import { getSportConfig } from "@/lib/sport-config";
+import { computeSeriesScore, loadPlayoffSeriesForMatchDetail } from "@/lib/playoff-series";
 import { formatDateTime } from "@/lib/utils";
 import { ChevronLeft } from "lucide-react";
 
@@ -32,9 +34,21 @@ export default async function AdminMatchDetailPage({
       events: true,
       penalties: true,
       goalieStats: true,
+      matchReferees: {
+        orderBy: { sortOrder: "asc" },
+        select: { refereeId: true, role: true },
+      },
     },
   });
   if (!match) notFound();
+
+  const playoffSeries = await loadPlayoffSeriesForMatchDetail(match.playoffSeriesId);
+
+  const leagueReferees = await prisma.referee.findMany({
+    where: { leagueId: league.id },
+    orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
+    select: { id: true, firstName: true, lastName: true },
+  });
 
   const seasonId = match.tournament.seasonId;
   const [homeRosters, awayRosters] = await Promise.all([
@@ -53,6 +67,23 @@ export default async function AdminMatchDetailPage({
   const sportConfig = getSportConfig(league.sportType);
 
   const showProtocol = match.status !== "CANCELLED";
+
+  const seriesScore = playoffSeries
+    ? computeSeriesScore({
+        teamAId: playoffSeries.teamAId,
+        teamBId: playoffSeries.teamBId,
+        winsToWin: playoffSeries.winsToWin,
+        winnerTeamId: playoffSeries.winnerTeamId,
+        matches: playoffSeries.matches,
+      })
+    : null;
+
+  const seriesWinnerName =
+    seriesScore?.winnerTeamId != null && playoffSeries
+      ? seriesScore.winnerTeamId === playoffSeries.teamAId
+        ? playoffSeries.teamA.name
+        : playoffSeries.teamB.name
+      : null;
 
   const initialProtocol =
     match.status === "CANCELLED"
@@ -81,6 +112,10 @@ export default async function AdminMatchDetailPage({
             playerId: g.playerId,
             saves: g.saves,
             shutout: g.shutout,
+          })),
+          referees: match.matchReferees.map((mr) => ({
+            refereeId: mr.refereeId,
+            role: mr.role,
           })),
         };
 
@@ -114,6 +149,19 @@ export default async function AdminMatchDetailPage({
         </Link>
       </div>
 
+      {playoffSeries && seriesScore ? (
+        <div className="mt-6">
+          <PlayoffSeriesStatus
+            teamAName={playoffSeries.teamA.name}
+            teamBName={playoffSeries.teamB.name}
+            winsA={seriesScore.winsA}
+            winsB={seriesScore.winsB}
+            winsToWin={seriesScore.winsToWin}
+            winnerName={seriesWinnerName}
+          />
+        </div>
+      ) : null}
+
       {homePlayers.length === 0 && awayPlayers.length === 0 && showProtocol && (
         <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
           В составах команд на текущий сезон нет игроков — добавьте игроков и включите их в состав, чтобы
@@ -146,6 +194,7 @@ export default async function AdminMatchDetailPage({
             sportConfig={sportConfig}
             initialProtocol={initialProtocol}
             hasFinishedResult={match.status === "FINISHED"}
+            leagueReferees={leagueReferees}
           />
         </div>
       )}

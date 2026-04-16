@@ -1,7 +1,7 @@
 "use server";
 
 import { createHash } from "crypto";
-import { hash } from "bcrypt";
+import { hash, compare } from "bcrypt";
 import { AuthError } from "next-auth";
 import { headers } from "next/headers";
 import { prisma } from "@/lib/prisma";
@@ -19,6 +19,22 @@ import {
   resetPasswordSchema,
 } from "@/lib/validations/auth";
 import { ensureDefaultSeason } from "@/lib/default-season";
+
+function appBaseUrl(): string {
+  return process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+}
+
+/** Пароль верный, но почта не подтверждена — ссылка на страницу ввода кода. */
+export async function getEmailVerificationUrlIfPending(
+  email: string,
+  password: string
+): Promise<string | null> {
+  const user = await prisma.user.findUnique({ where: { email } });
+  if (!user || user.status !== "PENDING") return null;
+  const valid = await compare(password, user.passwordHash);
+  if (!valid) return null;
+  return `${appBaseUrl()}/register/verify?email=${encodeURIComponent(email)}`;
+}
 
 export async function register(formData: FormData) {
   const headersList = await headers();
@@ -132,13 +148,36 @@ export async function verifyOtp(formData: FormData) {
 }
 
 export async function resendOtp(email: string) {
-  const user = await prisma.user.findUnique({ where: { email } });
+  const trimmed = typeof email === "string" ? email.trim() : "";
+  if (!trimmed) {
+    return { error: "Укажите email" };
+  }
+
+  const user = await prisma.user.findFirst({
+    where: { email: { equals: trimmed, mode: "insensitive" } },
+  });
+
   if (!user || user.status !== "PENDING") {
     return { error: "Пользователь не найден" };
   }
 
-  const code = await createVerificationCode(email, "REGISTRATION");
-  await sendVerificationCode(email, code);
+  try {
+    const code = await createVerificationCode(user.email, "REGISTRATION");
+    await sendVerificationCode(user.email, code);
+  } catch (err) {
+    logger.error({ err }, "resendOtp failed");
+    const msg = err instanceof Error ? err.message : "";
+    if (msg.includes("SMTP не настроен")) {
+      return {
+        error:
+          "В `.env` не заданы SMTP_USER и SMTP_PASSWORD. Скопируйте `cp .env.example .env`, заполните почту (см. раздел «Переменные окружения» в README) и перезапустите сервер.",
+      };
+    }
+    return {
+      error:
+        "Не удалось отправить письмо. Проверьте SMTP в `.env` (README, `.env.example`) и перезапустите сервер.",
+    };
+  }
 
   return { success: true };
 }
@@ -169,6 +208,18 @@ export async function login(formData: FormData) {
 
   if (!parsed.success) {
     return { error: "Введите email и пароль" };
+  }
+
+  const verifyUrl = await getEmailVerificationUrlIfPending(
+    parsed.data.email,
+    parsed.data.password
+  );
+  if (verifyUrl) {
+    return {
+      error:
+        "Сначала подтвердите email: введите код из письма, отправленного на вашу почту.",
+      verifyUrl,
+    };
   }
 
   try {

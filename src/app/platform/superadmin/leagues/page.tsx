@@ -1,6 +1,8 @@
+import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { formatDate } from "@/lib/utils";
 import { ListPagination } from "@/components/public/list-pagination";
+import { SuperadminLeagueModeration } from "@/components/superadmin/moderation-buttons";
 import {
   computeListPagination,
   DEFAULT_LIST_PAGE_SIZE,
@@ -40,22 +42,42 @@ export default async function LeaguesPage({
             <tr>
               <th className="text-left px-4 py-3 font-medium text-slate-600">Название</th>
               <th className="text-left px-4 py-3 font-medium text-slate-600">Slug</th>
+              <th className="text-left px-4 py-3 font-medium text-slate-600">Статус</th>
               <th className="text-left px-4 py-3 font-medium text-slate-600">Спорт</th>
               <th className="text-left px-4 py-3 font-medium text-slate-600">Владелец</th>
               <th className="text-right px-4 py-3 font-medium text-slate-600">Команд</th>
               <th className="text-right px-4 py-3 font-medium text-slate-600">Игроков</th>
               <th className="text-right px-4 py-3 font-medium text-slate-600">Матчей</th>
               <th className="text-left px-4 py-3 font-medium text-slate-600">Создана</th>
+              <th className="text-right px-4 py-3 font-medium text-slate-600">Действия</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200">
             {leagues.map((league) => (
               <tr key={league.id} className="hover:bg-slate-50/90">
-                <td className="px-4 py-3 font-medium text-slate-900">{league.name}</td>
+                <td className="px-4 py-3 font-medium text-slate-900">
+                  <Link
+                    href={`/superadmin/leagues/${league.id}`}
+                    className="text-blue-700 hover:underline"
+                  >
+                    {league.name}
+                  </Link>
+                </td>
                 <td className="px-4 py-3 font-mono text-xs text-blue-600">
                   <a href={`http://${league.slug}.sporthub.ru`} target="_blank" rel="noreferrer">
                     {league.slug}
                   </a>
+                </td>
+                <td className="px-4 py-3">
+                  <span
+                    className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
+                      league.status === "ACTIVE"
+                        ? "bg-green-100 text-green-800"
+                        : "bg-red-100 text-red-800"
+                    }`}
+                  >
+                    {league.status === "ACTIVE" ? "Активна" : "Заблокирована"}
+                  </span>
                 </td>
                 <td className="px-4 py-3 text-slate-600">{league.sportType}</td>
                 <td className="px-4 py-3 text-slate-600 text-xs">
@@ -70,6 +92,9 @@ export default async function LeaguesPage({
                 <td className="px-4 py-3 text-right text-slate-600">{league._count.players}</td>
                 <td className="px-4 py-3 text-right text-slate-600">{league._count.matches}</td>
                 <td className="px-4 py-3 text-slate-600 text-xs">{formatDate(league.createdAt)}</td>
+                <td className="px-4 py-3 text-right">
+                  <SuperadminLeagueModeration leagueId={league.id} status={league.status} />
+                </td>
               </tr>
             ))}
           </tbody>

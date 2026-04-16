@@ -1,15 +1,49 @@
 import { PlayerRole } from "@prisma/client";
 import { z } from "zod/v4";
 
-export const tournamentSchema = z.object({
-  name: z.string().min(2, "Минимум 2 символа").max(100),
-  emblem: z
-    .string()
-    .max(500)
-    .optional()
-    .transform((s) => (s == null || s.trim() === "" ? undefined : s.trim())),
-  type: z.enum(["REGULAR", "PLAYOFF", "GROUP_STAGE", "CUP"]),
-});
+const playoffPairingEnum = z.enum([
+  "SEEDING_1_8",
+  "SEEDING_ADJACENT",
+  "MANUAL",
+]);
+
+export const tournamentSchema = z
+  .object({
+    name: z.string().min(2, "Минимум 2 символа").max(100),
+    emblem: z
+      .string()
+      .max(500)
+      .optional()
+      .transform((s) => (s == null || s.trim() === "" ? undefined : s.trim())),
+    type: z.enum(["REGULAR", "PLAYOFF", "GROUP_STAGE", "CUP"]),
+    playoffPairing: z.preprocess(
+      (v) => (v === "" || v == null ? undefined : v),
+      playoffPairingEnum.optional()
+    ),
+    seriesWinsToWin: z.preprocess(
+      (v) =>
+        v === "" || v == null ? undefined : Number(v),
+      z.number().int().min(1).max(4).optional()
+    ),
+  })
+  .superRefine((data, ctx) => {
+    if (data.type === "PLAYOFF") {
+      if (!data.playoffPairing) {
+        ctx.addIssue({
+          code: "custom",
+          message: "Выберите систему формирования пар",
+          path: ["playoffPairing"],
+        });
+      }
+      if (data.seriesWinsToWin == null || Number.isNaN(data.seriesWinsToWin)) {
+        ctx.addIssue({
+          code: "custom",
+          message: "Укажите побед в серии до завершения (1–4)",
+          path: ["seriesWinsToWin"],
+        });
+      }
+    }
+  });
 
 export const teamSchema = z.object({
   name: z.string().min(2, "Минимум 2 символа").max(100),
@@ -17,6 +51,56 @@ export const teamSchema = z.object({
   foundedYear: z.coerce.number().min(1800).max(2100).optional(),
   description: z.string().max(5000).optional(),
   contactEmail: z.email().optional().or(z.literal("")),
+  logo: z
+    .string()
+    .max(500)
+    .optional()
+    .transform((s) => (s == null || s.trim() === "" ? undefined : s.trim())),
+});
+
+export const refereeSchema = z.object({
+  firstName: z
+    .string()
+    .min(1, "Введите имя")
+    .max(100)
+    .transform((s) => s.trim()),
+  lastName: z
+    .string()
+    .min(1, "Введите фамилию")
+    .max(100)
+    .transform((s) => s.trim()),
+  photo: z
+    .string()
+    .max(500)
+    .optional()
+    .transform((s) => (s == null || s.trim() === "" ? undefined : s.trim())),
+  category: z
+    .string()
+    .max(100)
+    .optional()
+    .transform((s) => (s == null || s.trim() === "" ? undefined : s.trim())),
+});
+
+export const coachSchema = z.object({
+  firstName: z
+    .string()
+    .min(1, "Введите имя")
+    .max(100)
+    .transform((s) => s.trim()),
+  lastName: z
+    .string()
+    .min(1, "Введите фамилию")
+    .max(100)
+    .transform((s) => s.trim()),
+  photo: z
+    .string()
+    .max(500)
+    .optional()
+    .transform((s) => (s == null || s.trim() === "" ? undefined : s.trim())),
+  teamId: z
+    .string()
+    .optional()
+    .transform((s) => (s == null || s.trim() === "" ? undefined : s.trim())),
 });
 
 export const playerSchema = z.object({
@@ -43,6 +127,24 @@ export const matchSchema = z.object({
   groupId: z.string().optional(),
   venue: z.string().max(200).optional(),
   round: z.coerce.number().positive().optional(),
+});
+
+/** Создание матча, включая опции плей-офф-серии. */
+export const matchCreateInputSchema = matchSchema.extend({
+  playoffSeriesId: z.preprocess(
+    (v) => (v === "" || v == null ? undefined : String(v).trim()),
+    z.string().optional()
+  ),
+  /** new — первая игра новой серии (команды берутся из матча); existing — матч в уже созданной серии */
+  playoffSeriesMode: z.preprocess(
+    (v) => (v === "" || v == null ? "new" : v),
+    z.enum(["new", "existing"])
+  ),
+  newSeriesLabel: z
+    .string()
+    .max(120)
+    .optional()
+    .transform((s) => (s == null || s.trim() === "" ? undefined : s.trim())),
 });
 
 export const matchResultSchema = z.object({

@@ -4,6 +4,9 @@ import { Suspense, useState, useRef, useEffect, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import { verifyOtp, resendOtp } from "@/actions/auth";
 
+/** Секунды ожидания до следующей повторной отправки кода. */
+const RESEND_COOLDOWN_SECONDS = 20;
+
 function VerifyPageContent() {
   const searchParams = useSearchParams();
   const email = searchParams.get("email") ?? "";
@@ -13,6 +16,7 @@ function VerifyPageContent() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [resendCooldown, setResendCooldown] = useState(0);
+  const [resendLoading, setResendLoading] = useState(false);
   const inputsRef = useRef<(HTMLInputElement | null)[]>([]);
 
   useEffect(() => {
@@ -83,10 +87,19 @@ function VerifyPageContent() {
   }, [code, handleSubmit]);
 
   const handleResend = async () => {
-    if (resendCooldown > 0) return;
-    const result = await resendOtp(email);
-    if (result.error) setError(result.error);
-    setResendCooldown(60);
+    if (resendCooldown > 0 || resendLoading) return;
+    setResendLoading(true);
+    try {
+      const result = await resendOtp(email);
+      if (result.error) {
+        setError(result.error);
+        return;
+      }
+      setError("");
+      setResendCooldown(RESEND_COOLDOWN_SECONDS);
+    } finally {
+      setResendLoading(false);
+    }
   };
 
   return (
@@ -132,13 +145,16 @@ function VerifyPageContent() {
         </button>
 
         <button
+          type="button"
           onClick={handleResend}
-          disabled={resendCooldown > 0}
+          disabled={resendCooldown > 0 || resendLoading}
           className="mt-4 text-sm text-blue-600 hover:underline disabled:text-gray-400 disabled:no-underline"
         >
-          {resendCooldown > 0
-            ? `Отправить повторно (${resendCooldown}с)`
-            : "Отправить код повторно"}
+          {resendLoading
+            ? "Отправка…"
+            : resendCooldown > 0
+              ? `Отправить повторно (${resendCooldown}с)`
+              : "Отправить код повторно"}
         </button>
       </div>
     </div>

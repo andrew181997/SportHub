@@ -19,6 +19,10 @@ export async function assertLeagueAdminMembershipAfterLogin() {
     return { ok: false as const, reason: "no_league" as const };
   }
 
+  if (league.status === "BLOCKED") {
+    return { ok: false as const, reason: "league_blocked" as const };
+  }
+
   const membership = await prisma.userLeague.findUnique({
     where: {
       userId_leagueId: {

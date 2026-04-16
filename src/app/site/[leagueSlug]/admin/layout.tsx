@@ -15,6 +15,8 @@ import {
   Inbox,
   Settings,
   BarChart3,
+  Scale,
+  GraduationCap,
 } from "lucide-react";
 
 const navItems = [
@@ -22,6 +24,8 @@ const navItems = [
   { href: "statistics", label: "Статистика", icon: BarChart3 },
   { href: "tournaments", label: "Турниры", icon: Trophy },
   { href: "teams", label: "Команды", icon: Users },
+  { href: "referees", label: "Судьи", icon: Scale },
+  { href: "coaches", label: "Тренеры", icon: GraduationCap },
   { href: "players", label: "Игроки", icon: UserCircle },
   { href: "matches", label: "Матчи", icon: Calendar },
   { href: "news", label: "Новости", icon: Newspaper },
@@ -51,12 +55,36 @@ export default async function AdminLayout({
     redirect("/admin/login");
   }
 
+  const dbUser = await prisma.user.findUnique({
+    where: { id: session.user.id! },
+    select: { status: true, email: true },
+  });
+
+  if (!dbUser) {
+    redirect("/admin/login");
+  }
+
+  if (dbUser.status === "PENDING") {
+    const base = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+    redirect(
+      `${base}/register/verify?email=${encodeURIComponent(dbUser.email)}`
+    );
+  }
+
+  if (dbUser.status === "BLOCKED") {
+    redirect("/admin/login?error=blocked");
+  }
+
   const league = await prisma.league.findUnique({
     where: { slug: leagueSlug },
     include: { siteConfig: true },
   });
 
   if (!league) redirect("/");
+
+  if (league.status === "BLOCKED") {
+    redirect("/admin/login?error=league_blocked");
+  }
 
   const membership = await prisma.userLeague.findUnique({
     where: {

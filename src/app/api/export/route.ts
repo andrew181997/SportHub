@@ -34,6 +34,9 @@ export async function GET(request: NextRequest) {
   if (!league) {
     return NextResponse.json({ error: "League not found" }, { status: 404 });
   }
+  if (league.status === "BLOCKED") {
+    return NextResponse.json({ error: "League unavailable" }, { status: 403 });
+  }
 
   const membership = await prisma.userLeague.findUnique({
     where: {

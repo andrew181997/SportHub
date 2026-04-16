@@ -27,7 +27,7 @@ export default async function AdminMatchesPage({
   const total = await prisma.match.count({ where });
   const meta = computeListPagination(page, DEFAULT_LIST_PAGE_SIZE, total);
 
-  const [matches, tournaments, teams] = await Promise.all([
+  const [matches, tournaments, teams, playoffSeriesOptions] = await Promise.all([
     prisma.match.findMany({
       where,
       orderBy: { datetime: "desc" },
@@ -42,14 +42,48 @@ export default async function AdminMatchesPage({
     prisma.tournament.findMany({
       where: { leagueId: league.id, archivedAt: null },
       orderBy: { name: "asc" },
-      select: { id: true, name: true },
+      select: { id: true, name: true, type: true },
     }),
     prisma.team.findMany({
       where: { leagueId: league.id, archivedAt: null },
       orderBy: { name: "asc" },
       select: { id: true, name: true },
     }),
+    prisma.playoffSeries.findMany({
+      where: { tournament: { leagueId: league.id } },
+      include: {
+        teamA: { select: { name: true } },
+        teamB: { select: { name: true } },
+      },
+    }),
   ]);
+
+  const playoffSeriesForForm = playoffSeriesOptions.map((s) => ({
+    id: s.id,
+    tournamentId: s.tournamentId,
+    label: `${s.label ? `${s.label} · ` : ""}${s.teamA.name} — ${s.teamB.name}`,
+  }));
+
+  const seriesIdList = [
+    ...new Set(
+      matches
+        .map((m) => m.playoffSeriesId)
+        .filter((id): id is string => typeof id === "string" && id.length > 0)
+    ),
+  ];
+  const seriesRows =
+    seriesIdList.length > 0
+      ? await prisma.playoffSeries.findMany({
+          where: { id: { in: seriesIdList } },
+          select: {
+            id: true,
+            winnerTeamId: true,
+            teamA: { select: { id: true, name: true } },
+            teamB: { select: { id: true, name: true } },
+          },
+        })
+      : [];
+  const seriesById = new Map(seriesRows.map((s) => [s.id, s]));
 
   const statusLabels: Record<string, string> = {
     SCHEDULED: "Запланирован",
@@ -71,7 +105,11 @@ export default async function AdminMatchesPage({
     <div>
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <h1 className="text-2xl font-bold text-gray-900">Матчи</h1>
-        <MatchCreateForm tournaments={tournaments} teams={teams} />
+        <MatchCreateForm
+          tournaments={tournaments}
+          teams={teams}
+          playoffSeries={playoffSeriesForForm}
+        />
       </div>
 
       <div className="mt-6 rounded-xl border-2 border-slate-200 bg-white shadow-md overflow-hidden">
@@ -81,13 +119,17 @@ export default async function AdminMatchesPage({
               <th className="text-left px-4 py-3 font-medium text-slate-600">Дата</th>
               <th className="text-left px-4 py-3 font-medium text-slate-600">Матч</th>
               <th className="text-center px-4 py-3 font-medium text-slate-600">Счёт</th>
-              <th className="text-left px-4 py-3 font-medium text-slate-600">Турнир</th>
+              <th className="text-left px-4 py-3 font-medium text-slate-600">Турнир / серия</th>
               <th className="text-left px-4 py-3 font-medium text-slate-600">Статус</th>
               <th className="text-right px-4 py-3 font-medium text-slate-600">Действия</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200">
-            {matches.map((m) => (
+            {matches.map((m) => {
+              const ps = m.playoffSeriesId
+                ? seriesById.get(m.playoffSeriesId)
+                : undefined;
+              return (
               <tr key={m.id} className="hover:bg-slate-50/90">
                 <td className="px-4 py-3 text-slate-600 text-xs whitespace-nowrap">
                   {formatDateTime(m.datetime)}
@@ -100,7 +142,21 @@ export default async function AdminMatchesPage({
                     ? `${m.homeScore}:${m.awayScore}`
                     : "—"}
                 </td>
-                <td className="px-4 py-3 text-slate-600 text-xs">{m.tournament.name}</td>
+                <td className="px-4 py-3 text-slate-600 text-xs">
+                  <div>{m.tournament.name}</div>
+                  {ps ? (
+                    <div className="mt-0.5 text-[11px] text-violet-700">
+                      Серия: {ps.teamA.name} — {ps.teamB.name}
+                      {ps.winnerTeamId
+                        ? ` · победитель: ${
+                            ps.winnerTeamId === ps.teamA.id
+                              ? ps.teamA.name
+                              : ps.teamB.name
+                          }`
+                        : ""}
+                    </div>
+                  ) : null}
+                </td>
                 <td className="px-4 py-3">
                   <span className={`rounded px-2 py-0.5 text-xs font-medium ${statusColors[m.status]}`}>
                     {statusLabels[m.status]}
@@ -115,7 +171,8 @@ export default async function AdminMatchesPage({
                   </Link>
                 </td>
               </tr>
-            ))}
+            );
+            })}
             {matches.length === 0 && (
               <tr>
                 <td colSpan={6} className="px-4 py-8 text-center text-gray-400">

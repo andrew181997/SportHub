@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
 import { createMatch } from "@/actions/matches";
@@ -10,6 +10,13 @@ import { Input } from "@/components/ui/input";
 export interface MatchFormTournament {
   id: string;
   name: string;
+  type: string;
+}
+
+export interface MatchFormPlayoffSeries {
+  id: string;
+  tournamentId: string;
+  label: string;
 }
 
 export interface MatchFormTeam {
@@ -20,21 +27,55 @@ export interface MatchFormTeam {
 interface Props {
   tournaments: MatchFormTournament[];
   teams: MatchFormTeam[];
+  playoffSeries: MatchFormPlayoffSeries[];
 }
 
-export function MatchCreateForm({ tournaments, teams }: Props) {
+export function MatchCreateForm({ tournaments, teams, playoffSeries }: Props) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [error, setError] = useState("");
   const [pending, startTransition] = useTransition();
+  const [tournamentId, setTournamentId] = useState("");
+  const [playoffMode, setPlayoffMode] = useState<"new" | "existing">("new");
 
   const canCreate = tournaments.length > 0 && teams.length >= 2;
+
+  const selectedTournament = useMemo(
+    () => tournaments.find((t) => t.id === tournamentId),
+    [tournamentId, tournaments]
+  );
+  const isPlayoff = selectedTournament?.type === "PLAYOFF";
+
+  const seriesForTournament = useMemo(
+    () => playoffSeries.filter((s) => s.tournamentId === tournamentId),
+    [playoffSeries, tournamentId]
+  );
 
   function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError("");
     const form = e.currentTarget;
     const fd = new FormData(form);
+    const tournamentIdVal = fd.get("tournamentId");
+    if (!tournamentIdVal || String(tournamentIdVal).trim() === "") {
+      setError("Выберите турнир.");
+      return;
+    }
+    const datetime = fd.get("datetime");
+    if (!datetime || String(datetime).trim() === "") {
+      setError("Укажите дату и время матча.");
+      return;
+    }
+    const homeTeamId = fd.get("homeTeamId");
+    const awayTeamId = fd.get("awayTeamId");
+    if (!homeTeamId || String(homeTeamId).trim() === "") {
+      setError("Выберите команду хозяев.");
+      return;
+    }
+    if (!awayTeamId || String(awayTeamId).trim() === "") {
+      setError("Выберите команду гостей.");
+      return;
+    }
     const venue = fd.get("venue");
     if (!venue || String(venue).trim() === "") {
       fd.delete("venue");
@@ -50,6 +91,8 @@ export function MatchCreateForm({ tournaments, teams }: Props) {
         return;
       }
       form.reset();
+      setTournamentId("");
+      setPlayoffMode("new");
       setOpen(false);
       router.refresh();
     });
@@ -93,6 +136,11 @@ export function MatchCreateForm({ tournaments, teams }: Props) {
               name="tournamentId"
               required
               disabled={pending}
+              value={tournamentId}
+              onChange={(e) => {
+                setTournamentId(e.target.value);
+                setPlayoffMode("new");
+              }}
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
             >
               <option value="">— Выберите турнир —</option>
@@ -103,6 +151,75 @@ export function MatchCreateForm({ tournaments, teams }: Props) {
               ))}
             </select>
           </div>
+
+          {isPlayoff && (
+            <div className="rounded-lg border border-violet-200 bg-violet-50/80 p-3 space-y-3">
+              <p className="text-xs font-medium text-violet-900">Плей-офф: серия</p>
+              <div className="flex flex-wrap gap-4 text-sm">
+                <label className="inline-flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="playoffSeriesMode"
+                    value="new"
+                    checked={playoffMode === "new"}
+                    onChange={() => setPlayoffMode("new")}
+                    disabled={pending}
+                  />
+                  Новая серия (первый матч)
+                </label>
+                <label className="inline-flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="playoffSeriesMode"
+                    value="existing"
+                    checked={playoffMode === "existing"}
+                    onChange={() => setPlayoffMode("existing")}
+                    disabled={pending}
+                  />
+                  Матч в существующей серии
+                </label>
+              </div>
+              {playoffMode === "new" && (
+                <Input
+                  name="newSeriesLabel"
+                  label="Подпись серии (необязательно)"
+                  disabled={pending}
+                  placeholder="Например: 1/4 финала"
+                />
+              )}
+              {playoffMode === "existing" && (
+                <div>
+                  <label htmlFor="playoff-series" className="block text-sm font-medium text-gray-700 mb-1">
+                    Серия *
+                  </label>
+                  <select
+                    id="playoff-series"
+                    name="playoffSeriesId"
+                    required={playoffMode === "existing"}
+                    disabled={pending || seriesForTournament.length === 0}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                  >
+                    <option value="">— Выберите серию —</option>
+                    {seriesForTournament.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.label}
+                      </option>
+                    ))}
+                  </select>
+                  {seriesForTournament.length === 0 ? (
+                    <p className="mt-1 text-xs text-amber-800">
+                      Нет серий в этом турнире. Создайте первый матч как «Новая серия».
+                    </p>
+                  ) : (
+                    <p className="mt-1 text-xs text-gray-600">
+                      Команды матча должны совпадать с участниками серии (хозяева и гости можно поменять местами).
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
           <Input
             name="datetime"
             label="Дата и время *"

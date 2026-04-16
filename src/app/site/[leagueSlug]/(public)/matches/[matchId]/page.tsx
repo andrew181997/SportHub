@@ -3,6 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { notFound } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
 import { MatchProtocolDisplay } from "@/components/match/match-protocol-display";
+import { PlayoffSeriesStatus } from "@/components/match/playoff-series-status";
+import { computeSeriesScore, loadPlayoffSeriesForMatchDetail } from "@/lib/playoff-series";
 
 export const revalidate = 30;
 
@@ -42,10 +44,35 @@ export default async function PublicMatchPage({
           },
         },
       },
+      matchReferees: {
+        orderBy: { sortOrder: "asc" },
+        include: {
+          referee: { select: { firstName: true, lastName: true } },
+        },
+      },
     },
   });
 
   if (!match) notFound();
+
+  const playoffSeries = await loadPlayoffSeriesForMatchDetail(match.playoffSeriesId);
+
+  const seriesScore = playoffSeries
+    ? computeSeriesScore({
+        teamAId: playoffSeries.teamAId,
+        teamBId: playoffSeries.teamBId,
+        winsToWin: playoffSeries.winsToWin,
+        winnerTeamId: playoffSeries.winnerTeamId,
+        matches: playoffSeries.matches,
+      })
+    : null;
+
+  const seriesWinnerName =
+    seriesScore?.winnerTeamId != null && playoffSeries
+      ? seriesScore.winnerTeamId === playoffSeries.teamAId
+        ? playoffSeries.teamA.name
+        : playoffSeries.teamB.name
+      : null;
 
   return (
     <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -66,6 +93,19 @@ export default async function PublicMatchPage({
       </div>
 
       <h1 className="text-2xl font-bold text-gray-900 mb-2">Матч</h1>
+
+      {playoffSeries && seriesScore ? (
+        <div className="mb-6">
+          <PlayoffSeriesStatus
+            teamAName={playoffSeries.teamA.name}
+            teamBName={playoffSeries.teamB.name}
+            winsA={seriesScore.winsA}
+            winsB={seriesScore.winsB}
+            winsToWin={seriesScore.winsToWin}
+            winnerName={seriesWinnerName}
+          />
+        </div>
+      ) : null}
 
       <MatchProtocolDisplay
         sportType={league.sportType}
@@ -103,6 +143,11 @@ export default async function PublicMatchPage({
           goalsAgainst: g.goalsAgainst,
           shutout: g.shutout,
           player: g.player,
+        }))}
+        referees={match.matchReferees.map((mr) => ({
+          firstName: mr.referee.firstName,
+          lastName: mr.referee.lastName,
+          role: mr.role,
         }))}
       />
     </div>

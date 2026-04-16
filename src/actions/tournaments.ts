@@ -21,6 +21,10 @@ export async function createTournament(formData: FormData) {
       name: parsed.data.name,
       emblem: parsed.data.emblem,
       type: parsed.data.type,
+      playoffPairing:
+        parsed.data.type === "PLAYOFF" ? parsed.data.playoffPairing : null,
+      seriesWinsToWin:
+        parsed.data.type === "PLAYOFF" ? parsed.data.seriesWinsToWin : null,
       leagueId: league.id,
       seasonId: season.id,
     },
@@ -45,6 +49,10 @@ export async function updateTournament(id: string, formData: FormData) {
       name: parsed.data.name,
       emblem: parsed.data.emblem,
       type: parsed.data.type,
+      playoffPairing:
+        parsed.data.type === "PLAYOFF" ? parsed.data.playoffPairing : null,
+      seriesWinsToWin:
+        parsed.data.type === "PLAYOFF" ? parsed.data.seriesWinsToWin : null,
     },
   });
 

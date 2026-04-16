@@ -1,32 +1,46 @@
+import Link from "next/link";
 import { prisma } from "@/lib/prisma";
-import { Users, Shield, Trophy, Calendar } from "lucide-react";
+import { Users, Shield, Calendar, Ban } from "lucide-react";
 
 export default async function SuperadminDashboard() {
-  const [leagueCount, userCount, matchCount, recentLeagues] =
-    await Promise.all([
-      prisma.league.count(),
-      prisma.user.count(),
-      prisma.match.count(),
-      prisma.league.findMany({
-        orderBy: { createdAt: "desc" },
-        take: 5,
-        include: {
-          _count: { select: { teams: true, matches: true } },
-        },
-      }),
-    ]);
+  const [
+    leagueCount,
+    userCount,
+    matchCount,
+    blockedLeagueCount,
+    blockedUserCount,
+    recentLeagues,
+  ] = await Promise.all([
+    prisma.league.count(),
+    prisma.user.count(),
+    prisma.match.count(),
+    prisma.league.count({ where: { status: "BLOCKED" } }),
+    prisma.user.count({ where: { status: "BLOCKED", isSuperAdmin: false } }),
+    prisma.league.findMany({
+      orderBy: { createdAt: "desc" },
+      take: 5,
+      include: {
+        _count: { select: { teams: true, matches: true } },
+      },
+    }),
+  ]);
 
   const stats = [
     { label: "Лиг", value: leagueCount, icon: Shield },
     { label: "Пользователей", value: userCount, icon: Users },
     { label: "Матчей", value: matchCount, icon: Calendar },
+    {
+      label: "Заблокировано (лиги / пользователи)",
+      value: `${blockedLeagueCount} / ${blockedUserCount}`,
+      icon: Ban,
+    },
   ];
 
   return (
     <div>
       <h1 className="text-2xl font-bold text-gray-900">Дашборд платформы</h1>
 
-      <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-6">
+      <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         {stats.map((s) => (
           <div
             key={s.label}
@@ -38,7 +52,7 @@ export default async function SuperadminDashboard() {
               </div>
               <div>
                 <p className="text-2xl font-bold text-gray-900">{s.value}</p>
-                <p className="text-sm text-gray-500">{s.label}</p>
+                <p className="text-sm text-gray-500 leading-snug">{s.label}</p>
               </div>
             </div>
           </div>
@@ -74,7 +88,12 @@ export default async function SuperadminDashboard() {
               {recentLeagues.map((league) => (
                 <tr key={league.id} className="hover:bg-gray-50">
                   <td className="px-4 py-3 font-medium text-gray-900">
-                    {league.name}
+                    <Link
+                      href={`/superadmin/leagues/${league.id}`}
+                      className="text-blue-700 hover:underline"
+                    >
+                      {league.name}
+                    </Link>
                   </td>
                   <td className="px-4 py-3 text-gray-500 font-mono text-xs">
                     {league.slug}.sporthub.ru

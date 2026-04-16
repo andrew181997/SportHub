@@ -3,17 +3,24 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { signIn, signOut } from "next-auth/react";
-import { consumeLoginRateLimitSlot } from "@/actions/auth";
+import {
+  consumeLoginRateLimitSlot,
+  getEmailVerificationUrlIfPending,
+} from "@/actions/auth";
 import { assertLeagueAdminMembershipAfterLogin } from "@/actions/league-admin-access";
 import { Button } from "@/components/ui/button";
 
 const ACCESS_MESSAGES: Record<string, string> = {
   no_access:
     "Эта учётная запись не привязана к админке данной лиги. Войдите под пользователем, у которого есть доступ (для демо: demo@sporthub.ru), либо выйдите и выберите другой аккаунт.",
+  blocked: "Аккаунт заблокирован. Обратитесь в поддержку.",
+  league_blocked:
+    "Доступ к админ-панели этой лиги ограничен. Обратитесь в поддержку.",
 };
 
 export function AdminLoginForm({ accessError }: { accessError?: string }) {
   const [error, setError] = useState("");
+  const [verifyUrl, setVerifyUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [logoutPending, startLogout] = useTransition();
 
@@ -33,6 +40,7 @@ export function AdminLoginForm({ accessError }: { accessError?: string }) {
 
     setLoading(true);
     setError("");
+    setVerifyUrl(null);
 
     const gate = await consumeLoginRateLimitSlot();
     if (gate.error) {
@@ -42,6 +50,16 @@ export function AdminLoginForm({ accessError }: { accessError?: string }) {
     }
 
     try {
+      const pendingUrl = await getEmailVerificationUrlIfPending(email, password);
+      if (pendingUrl) {
+        setError(
+          "Сначала подтвердите email: введите код из письма, отправленного на вашу почту."
+        );
+        setVerifyUrl(pendingUrl);
+        setLoading(false);
+        return;
+      }
+
       // next-auth/react при redirect: false делает new URL(data.url): относительный путь ломает вход.
       const callbackUrl = `${window.location.origin}/admin/dashboard`;
       const result = await signIn("credentials", {
@@ -79,6 +97,11 @@ export function AdminLoginForm({ accessError }: { accessError?: string }) {
         if (access.reason === "no_membership") {
           await signOut({ redirect: false });
           window.location.assign("/admin/login?error=no_access");
+          return;
+        }
+        if (access.reason === "league_blocked") {
+          await signOut({ redirect: false });
+          window.location.assign("/admin/login?error=league_blocked");
           return;
         }
         setError("Не удалось проверить доступ к админке. Откройте сайт с поддомена лиги (например demo.localhost).");
@@ -125,7 +148,17 @@ export function AdminLoginForm({ accessError }: { accessError?: string }) {
 
         <form onSubmit={handleSubmit} className="space-y-4 bg-white rounded-2xl border p-8 shadow-sm">
           {error ? (
-            <div className="rounded-lg bg-red-50 border border-red-200 p-3 text-sm text-red-700">{error}</div>
+            <div className="rounded-lg bg-red-50 border border-red-200 p-3 text-sm text-red-700 space-y-2">
+              <p>{error}</p>
+              {verifyUrl ? (
+                <Link
+                  href={verifyUrl}
+                  className="font-medium text-blue-700 hover:underline inline-block"
+                >
+                  Перейти к подтверждению email
+                </Link>
+              ) : null}
+            </div>
           ) : null}
 
           <div>

@@ -28,6 +28,10 @@ export function TeamCreateForm({ tournaments = [] }: { tournaments?: TournamentO
     if (!tr || String(tr).trim() === "") {
       fd.delete("tournamentId");
     }
+    const logo = fd.get("logo");
+    if (!logo || String(logo).trim() === "") {
+      fd.delete("logo");
+    }
     startTransition(async () => {
       const r = await createTeam(fd);
       if (r.error) {
@@ -53,6 +57,13 @@ export function TeamCreateForm({ tournaments = [] }: { tournaments?: TournamentO
         >
           <h2 className="text-sm font-semibold text-gray-900">Новая команда</h2>
           <Input name="name" label="Название *" required disabled={pending} />
+          <Input
+            name="logo"
+            label="Логотип (URL, необязательно)"
+            type="url"
+            disabled={pending}
+            placeholder="https://…"
+          />
           <div className="grid gap-4 sm:grid-cols-2">
             <Input name="city" label="Город" disabled={pending} />
             <Input name="foundedYear" label="Год основания" type="number" min={1800} max={2100} disabled={pending} />

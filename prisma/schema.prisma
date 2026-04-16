@@ -52,14 +52,15 @@ model VerificationCode {
 // ─── Лига и сезоны ──────────────────────────────────────
 
 model League {
-  id          String    @id @default(cuid())
+  id          String       @id @default(cuid())
   name        String
-  slug        String    @unique
+  slug        String       @unique
   logo        String?
   description String?
   sportType   SportType
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  status      LeagueStatus @default(ACTIVE)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
 
   seasons      Season[]
   tournaments  Tournament[]
@@ -99,6 +100,10 @@ model Tournament {
   emblem     String?
   type       TournamentType
   archivedAt DateTime?
+  /** Плей-офф: схема формирования пар (для отображения и будущей генерации сетки). */
+  playoffPairing PlayoffPairing?
+  /** Плей-офф: побед в серии до выхода (1 — один матч, 2 — до 2 побед в серии из 3 и т.д.). */
+  seriesWinsToWin Int?
   league     League         @relation(fields: [leagueId], references: [id], onDelete: Restrict)
   leagueId   String
   season     Season         @relation(fields: [seasonId], references: [id], onDelete: Restrict)
@@ -109,6 +114,7 @@ model Tournament {
   standings    Standing[]
   applications Application[]
   media        Media[]
+  playoffSeries PlayoffSeries[]
 }
 
 model Group {
@@ -145,13 +151,37 @@ model Match {
   groupId      String?
   league       League      @relation(fields: [leagueId], references: [id], onDelete: Restrict)
   leagueId     String
+  playoffSeries   PlayoffSeries? @relation(fields: [playoffSeriesId], references: [id], onDelete: SetNull)
+  playoffSeriesId String?
 
-  events      MatchEvent[]
-  penalties   Penalty[]
-  goalieStats GoalieStats[]
-  media       Media[]
+  events         MatchEvent[]
+  penalties      Penalty[]
+  goalieStats    GoalieStats[]
+  media          Media[]
+  matchReferees  MatchReferee[]
 
   @@index([leagueId, datetime])
+  @@index([tournamentId])
+  @@index([playoffSeriesId])
+}
+
+/** Серия плей-офф между двумя командами (несколько матчей до winsToWin побед одной из сторон). */
+model PlayoffSeries {
+  id             String      @id @default(cuid())
+  tournament     Tournament  @relation(fields: [tournamentId], references: [id], onDelete: Restrict)
+  tournamentId   String
+  teamA          Team        @relation("PlayoffSeriesTeamA", fields: [teamAId], references: [id], onDelete: Restrict)
+  teamAId        String
+  teamB          Team        @relation("PlayoffSeriesTeamB", fields: [teamBId], references: [id], onDelete: Restrict)
+  teamBId        String
+  winsToWin      Int
+  /** Заполняется при достижении winsToWin побед одной из команд. */
+  winnerTeamId   String?
+  label          String?
+  createdAt      DateTime    @default(now())
+
+  matches Match[]
+
   @@index([tournamentId])
 }
 
@@ -220,6 +250,8 @@ model Team {
 
   homeMatches Match[]       @relation("HomeMatches")
   awayMatches Match[]       @relation("AwayMatches")
+  playoffSeriesAsA PlayoffSeries[] @relation("PlayoffSeriesTeamA")
+  playoffSeriesAsB PlayoffSeries[] @relation("PlayoffSeriesTeamB")
   rosters     TeamRoster[]
   coaches     Coach[]
   events      MatchEvent[]
@@ -308,15 +340,30 @@ model Coach {
 }
 
 model Referee {
-  id        String  @id @default(cuid())
-  firstName String
-  lastName  String
-  photo     String?
-  category  String?
-  league    League  @relation(fields: [leagueId], references: [id], onDelete: Restrict)
-  leagueId  String
+  id               String         @id @default(cuid())
+  firstName        String
+  lastName         String
+  photo            String?
+  category         String?
+  league           League         @relation(fields: [leagueId], references: [id], onDelete: Restrict)
+  leagueId         String
+  matchAssignments MatchReferee[]
 
   @@index([leagueId])
+}
+
+model MatchReferee {
+  id         String   @id @default(cuid())
+  match      Match    @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  matchId    String
+  referee    Referee  @relation(fields: [refereeId], references: [id], onDelete: Cascade)
+  refereeId  String
+  /** Напр. «Главный», «Линейный» */
+  role       String?
+  sortOrder  Int      @default(0)
+
+  @@unique([matchId, refereeId])
+  @@index([matchId])
 }
 
 // ─── Контент ────────────────────────────────────────────
@@ -430,6 +477,11 @@ enum UserStatus {
   BLOCKED
 }
 
+enum LeagueStatus {
+  ACTIVE
+  BLOCKED
+}
+
 enum LeagueRole {
   ADMIN
   EDITOR
@@ -453,6 +505,16 @@ enum TournamentType {
   PLAYOFF
   GROUP_STAGE
   CUP
+}
+
+/** Схема формирования пар в плей-офф (порядок посева / сетка). */
+enum PlayoffPairing {
+  /** 1-й vs 8-й, 2-й vs 7-й и т.д. */
+  SEEDING_1_8
+  /** Соседние места: 1–2, 3–4, … */
+  SEEDING_ADJACENT
+  /** Пары задаются вручную при создании матчей и серий. */
+  MANUAL
 }
 
 enum MatchStatus {

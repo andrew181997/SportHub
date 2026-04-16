@@ -62,23 +62,32 @@ export async function createTeam(formData: FormData) {
   revalidatePath("/admin/teams");
   revalidatePath("/admin/tournaments");
   revalidatePath("/standings");
+  revalidatePath("/teams");
   return { success: true };
 }
 
 export async function updateTeam(id: string, formData: FormData) {
   const league = await requireLeagueContext();
-  const parsed = teamSchema.safeParse(Object.fromEntries(formData));
+  const raw = Object.fromEntries(formData) as Record<string, string>;
+  const parsed = teamSchema.safeParse(raw);
 
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message };
   }
 
+  const logoCleared = raw.logo == null || String(raw.logo).trim() === "";
+
   await prisma.team.update({
     where: { id, leagueId: league.id },
-    data: parsed.data,
+    data: {
+      ...parsed.data,
+      logo: logoCleared ? null : (parsed.data.logo ?? null),
+    },
   });
 
   revalidatePath("/admin/teams");
+  revalidatePath("/teams");
+  revalidatePath(`/teams/${id}`);
   return { success: true };
 }
 

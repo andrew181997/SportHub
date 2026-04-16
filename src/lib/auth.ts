@@ -22,7 +22,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           where: { email },
         });
 
-        if (!user || user.status === "BLOCKED") return null;
+        if (!user || user.status !== "ACTIVE") return null;
 
         if (user.lockedUntil && user.lockedUntil > new Date()) {
           return null;

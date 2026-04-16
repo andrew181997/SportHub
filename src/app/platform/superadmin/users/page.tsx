@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { formatDate } from "@/lib/utils";
 import { ListPagination } from "@/components/public/list-pagination";
+import { SuperadminUserModeration } from "@/components/superadmin/moderation-buttons";
 import {
   computeListPagination,
   DEFAULT_LIST_PAGE_SIZE,
@@ -42,6 +43,7 @@ export default async function UsersPage({
               <th className="text-left px-4 py-3 font-medium text-slate-600">Статус</th>
               <th className="text-left px-4 py-3 font-medium text-slate-600">Лиги</th>
               <th className="text-left px-4 py-3 font-medium text-slate-600">Регистрация</th>
+              <th className="text-right px-4 py-3 font-medium text-slate-600">Действия</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200">
@@ -71,6 +73,9 @@ export default async function UsersPage({
                 </td>
                 <td className="px-4 py-3 text-slate-600 text-xs">
                   {formatDate(user.createdAt)}
+                </td>
+                <td className="px-4 py-3 text-right">
+                  <SuperadminUserModeration userId={user.id} status={user.status} />
                 </td>
               </tr>
             ))}
