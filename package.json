@@ -20,7 +20,8 @@
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "format": "prettier --write .",
-    "tsc": "tsc --noEmit"
+    "tsc": "tsc --noEmit",
+    "stats:loc": "node scripts/update-readme-loc.mjs"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
