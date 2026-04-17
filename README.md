@@ -4,6 +4,26 @@
 
 ---
 
+## Установка и запуск (быстрый старт)
+
+```bash
+pnpm install
+docker compose up -d
+cp .env.example .env
+
+# заполнить в .env минимум: DATABASE_URL, AUTH_SECRET, AUTH_URL, NEXT_PUBLIC_APP_URL
+pnpm db:push
+pnpm db:generate
+pnpm db:seed
+pnpm dev
+```
+
+Приложение будет доступно по адресу `http://localhost:3000`.
+
+Подробная инструкция с разбором типичных проблем остаётся в разделе [Установка и запуск](#установка-и-запуск).
+
+---
+
 ## Оглавление
 
 - [Описание проекта](#описание-проекта)
