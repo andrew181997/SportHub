@@ -62,6 +62,25 @@ export async function createMatch(formData: FormData) {
     return { error: "Турнир не найден" };
   }
 
+  const participation = await prisma.standing.findMany({
+    where: {
+      tournamentId: tournament.id,
+      teamId: { in: [parsed.data.homeTeamId, parsed.data.awayTeamId] },
+    },
+    select: { teamId: true },
+  });
+  const inTournament = new Set(participation.map((p) => p.teamId));
+  if (!inTournament.has(parsed.data.homeTeamId)) {
+    return {
+      error: "Команда хозяев не заявлена в этом турнире. Добавьте её в состав участников турнира.",
+    };
+  }
+  if (!inTournament.has(parsed.data.awayTeamId)) {
+    return {
+      error: "Команда гостей не заявлена в этом турнире. Добавьте её в состав участников турнира.",
+    };
+  }
+
   let playoffSeriesId: string | null = null;
 
   if (tournament.type === "PLAYOFF") {
@@ -95,6 +114,15 @@ export async function createMatch(formData: FormData) {
       }
       playoffSeriesId = series.id;
     } else {
+      const rowAgg = (await prisma.playoffSeries.aggregate({
+        where: {
+          tournamentId: tournament.id,
+          bracketColumn: 0,
+        },
+        _max: { bracketRow: true },
+      } as never)) as { _max: { bracketRow: number | null } | null };
+      const nextRow = (rowAgg._max?.bracketRow ?? -1) + 1;
+
       const series = await prisma.playoffSeries.create({
         data: {
           tournamentId: tournament.id,
@@ -102,7 +130,9 @@ export async function createMatch(formData: FormData) {
           teamBId: parsed.data.awayTeamId,
           winsToWin: tournament.seriesWinsToWin ?? 2,
           label: parsed.data.newSeriesLabel,
-        },
+          bracketColumn: 0,
+          bracketRow: nextRow,
+        } as never,
       });
       playoffSeriesId = series.id;
     }

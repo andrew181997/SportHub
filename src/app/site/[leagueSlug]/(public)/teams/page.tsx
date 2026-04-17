@@ -1,34 +1,73 @@
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { Users } from "lucide-react";
 import { ListPagination } from "@/components/public/list-pagination";
+import { TournamentFilterSuspense } from "@/components/public/tournament-filter-suspense";
 import {
   computeListPagination,
   DEFAULT_LIST_PAGE_SIZE,
   parseListPage,
 } from "@/lib/pagination";
+import {
+  buildPortalListQuery,
+  parseListSearchQuery,
+  parseTournamentFilterId,
+} from "@/lib/public-filters";
+import { PortalListSearchSuspense } from "@/components/public/portal-list-search-suspense";
 
 export default async function TeamsPage({
   params,
   searchParams,
 }: {
   params: Promise<{ leagueSlug: string }>;
-  searchParams: Promise<{ page?: string }>;
+  searchParams: Promise<{ page?: string; tournament?: string; q?: string }>;
 }) {
   const { leagueSlug } = await params;
-  const { page: pageRaw } = await searchParams;
+  const { page: pageRaw, tournament: tournamentRaw, q: qRaw } = await searchParams;
   const league = await prisma.league.findUnique({ where: { slug: leagueSlug } });
   if (!league) notFound();
 
-  const page = parseListPage(pageRaw);
-  const total = await prisma.team.count({
+  const tournamentOptions = await prisma.tournament.findMany({
     where: { leagueId: league.id, archivedAt: null },
+    orderBy: { name: "asc" },
+    select: { id: true, name: true },
   });
+
+  const filterId = parseTournamentFilterId(tournamentRaw);
+  const activeTournamentFilter =
+    filterId && tournamentOptions.some((t) => t.id === filterId) ? filterId : undefined;
+
+  const searchQ = parseListSearchQuery(qRaw);
+
+  const page = parseListPage(pageRaw);
+
+  const teamWhere: Prisma.TeamWhereInput = {
+    leagueId: league.id,
+    archivedAt: null,
+    ...(activeTournamentFilter
+      ? {
+          standings: {
+            some: { tournamentId: activeTournamentFilter },
+          },
+        }
+      : {}),
+    ...(searchQ
+      ? {
+          OR: [
+            { name: { contains: searchQ, mode: "insensitive" } },
+            { city: { contains: searchQ, mode: "insensitive" } },
+          ],
+        }
+      : {}),
+  };
+
+  const total = await prisma.team.count({ where: teamWhere });
   const meta = computeListPagination(page, DEFAULT_LIST_PAGE_SIZE, total);
 
   const teams = await prisma.team.findMany({
-    where: { leagueId: league.id, archivedAt: null },
+    where: teamWhere,
     orderBy: { name: "asc" },
     skip: meta.skip,
     take: meta.pageSize,
@@ -37,7 +76,13 @@ export default async function TeamsPage({
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <h1 className="text-2xl font-bold text-slate-900">Команды</h1>
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <h1 className="text-2xl font-bold text-slate-900">Команды</h1>
+          <TournamentFilterSuspense tournaments={tournamentOptions} className="sm:justify-end" />
+        </div>
+        <PortalListSearchSuspense placeholder="Поиск по названию или городу…" />
+      </div>
 
       <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
         {teams.map((team) => (
@@ -69,10 +114,18 @@ export default async function TeamsPage({
         ))}
       </div>
 
-      <ListPagination meta={meta} />
+      <ListPagination
+        meta={meta}
+        query={buildPortalListQuery({
+          tournament: activeTournamentFilter,
+          q: searchQ,
+        })}
+      />
 
       {teams.length === 0 && (
-        <p className="mt-8 text-slate-500">Нет команд</p>
+        <p className="mt-8 text-slate-500">
+          {searchQ ? "Ничего не найдено по запросу." : "Нет команд"}
+        </p>
       )}
     </div>
   );

@@ -4,29 +4,42 @@ import { prisma } from "@/lib/prisma";
 import { notFound } from "next/navigation";
 import { formatDateLong } from "@/lib/utils";
 import { ListPagination } from "@/components/public/list-pagination";
+import { TournamentFilterSuspense } from "@/components/public/tournament-filter-suspense";
 import {
   computeListPagination,
   DEFAULT_LIST_PAGE_SIZE,
   parseListPage,
 } from "@/lib/pagination";
+import { parseTournamentFilterId } from "@/lib/public-filters";
 
 export default async function CalendarPage({
   params,
   searchParams,
 }: {
   params: Promise<{ leagueSlug: string }>;
-  searchParams: Promise<{ page?: string }>;
+  searchParams: Promise<{ page?: string; tournament?: string }>;
 }) {
   const { leagueSlug } = await params;
-  const { page: pageRaw } = await searchParams;
+  const { page: pageRaw, tournament: tournamentRaw } = await searchParams;
   const league = await prisma.league.findUnique({ where: { slug: leagueSlug } });
   if (!league) notFound();
+
+  const tournamentOptions = await prisma.tournament.findMany({
+    where: { leagueId: league.id, archivedAt: null },
+    orderBy: { name: "asc" },
+    select: { id: true, name: true },
+  });
+
+  const filterId = parseTournamentFilterId(tournamentRaw);
+  const activeTournamentFilter =
+    filterId && tournamentOptions.some((t) => t.id === filterId) ? filterId : undefined;
 
   const page = parseListPage(pageRaw);
   const where: Prisma.MatchWhereInput = {
     leagueId: league.id,
     archivedAt: null,
     status: { in: ["SCHEDULED", "LIVE"] },
+    ...(activeTournamentFilter ? { tournamentId: activeTournamentFilter } : {}),
   };
   const total = await prisma.match.count({ where });
   const meta = computeListPagination(page, DEFAULT_LIST_PAGE_SIZE, total);
@@ -45,7 +58,10 @@ export default async function CalendarPage({
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <h1 className="text-2xl font-bold text-slate-900">Календарь матчей</h1>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <h1 className="text-2xl font-bold text-slate-900">Календарь матчей</h1>
+        <TournamentFilterSuspense tournaments={tournamentOptions} className="sm:justify-end" />
+      </div>
 
       <div className="mt-6 space-y-3">
         {matches.map((m) => (
@@ -82,7 +98,14 @@ export default async function CalendarPage({
         )}
       </div>
 
-      <ListPagination meta={meta} />
+      <ListPagination
+        meta={meta}
+        query={
+          activeTournamentFilter
+            ? { tournament: activeTournamentFilter }
+            : undefined
+        }
+      />
     </div>
   );
 }

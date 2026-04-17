@@ -27,7 +27,7 @@ export default async function AdminMatchesPage({
   const total = await prisma.match.count({ where });
   const meta = computeListPagination(page, DEFAULT_LIST_PAGE_SIZE, total);
 
-  const [matches, tournaments, teams, playoffSeriesOptions] = await Promise.all([
+  const [matches, tournaments, standingsRows, playoffSeriesOptions] = await Promise.all([
     prisma.match.findMany({
       where,
       orderBy: { datetime: "desc" },
@@ -44,10 +44,12 @@ export default async function AdminMatchesPage({
       orderBy: { name: "asc" },
       select: { id: true, name: true, type: true },
     }),
-    prisma.team.findMany({
-      where: { leagueId: league.id, archivedAt: null },
-      orderBy: { name: "asc" },
-      select: { id: true, name: true },
+    prisma.standing.findMany({
+      where: { tournament: { leagueId: league.id } },
+      select: {
+        tournamentId: true,
+        team: { select: { id: true, name: true } },
+      },
     }),
     prisma.playoffSeries.findMany({
       where: { tournament: { leagueId: league.id } },
@@ -62,6 +64,24 @@ export default async function AdminMatchesPage({
     id: s.id,
     tournamentId: s.tournamentId,
     label: `${s.label ? `${s.label} · ` : ""}${s.teamA.name} — ${s.teamB.name}`,
+  }));
+
+  const participantsByTournament = new Map<
+    string,
+    { id: string; name: string }[]
+  >();
+  for (const row of standingsRows) {
+    const list = participantsByTournament.get(row.tournamentId) ?? [];
+    list.push({ id: row.team.id, name: row.team.name });
+    participantsByTournament.set(row.tournamentId, list);
+  }
+  for (const [, list] of participantsByTournament) {
+    list.sort((a, b) => a.name.localeCompare(b.name, "ru"));
+  }
+
+  const tournamentParticipantLists = tournaments.map((t) => ({
+    tournamentId: t.id,
+    teams: participantsByTournament.get(t.id) ?? [],
   }));
 
   const seriesIdList = [
@@ -107,7 +127,7 @@ export default async function AdminMatchesPage({
         <h1 className="text-2xl font-bold text-gray-900">Матчи</h1>
         <MatchCreateForm
           tournaments={tournaments}
-          teams={teams}
+          participantsByTournament={tournamentParticipantLists}
           playoffSeries={playoffSeriesForForm}
         />
       </div>

@@ -15,7 +15,7 @@ export function getLeaguePublicShell(theme: string | null | undefined) {
       footer:
         "border-t border-slate-800/90 bg-slate-900/80 backdrop-blur-sm text-slate-400",
       navLink:
-        "px-3 py-2 text-sm font-medium text-slate-300 hover:text-white rounded-lg hover:bg-slate-800/90 transition-all duration-200",
+        "px-3 py-2 text-sm font-medium text-slate-300 hover:text-white rounded-lg hover:bg-slate-800/90 transition-all duration-200 whitespace-nowrap shrink-0",
       useGradientHeader: false as const,
       searchVariant: "dark" as PublicHeaderSearchVariant,
     };
@@ -30,7 +30,7 @@ export function getLeaguePublicShell(theme: string | null | undefined) {
       footer:
         "border-t border-slate-200/90 bg-white/95 backdrop-blur-sm text-slate-600 shadow-[0_-4px_24px_-8px_rgba(15,23,42,0.08)]",
       navLink:
-        "px-3 py-2 text-sm font-medium text-white/90 hover:text-white rounded-lg hover:bg-white/15 transition-all duration-200",
+        "px-3 py-2 text-sm font-medium text-white/90 hover:text-white rounded-lg hover:bg-white/15 transition-all duration-200 whitespace-nowrap shrink-0",
       useGradientHeader: true as const,
       searchVariant: "sport" as PublicHeaderSearchVariant,
     };
@@ -44,7 +44,7 @@ export function getLeaguePublicShell(theme: string | null | undefined) {
     footer:
       "border-t border-slate-200/80 bg-gradient-to-b from-slate-50 to-slate-100/95 text-slate-600",
     navLink:
-      "px-3 py-2 text-sm font-medium text-slate-600 hover:text-slate-900 rounded-lg hover:bg-slate-100/90 transition-all duration-200",
+      "px-3 py-2 text-sm font-medium text-slate-600 hover:text-slate-900 rounded-lg hover:bg-slate-100/90 transition-all duration-200 whitespace-nowrap shrink-0",
     useGradientHeader: false as const,
     searchVariant: "light" as PublicHeaderSearchVariant,
   };

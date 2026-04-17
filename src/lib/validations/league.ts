@@ -232,6 +232,32 @@ export const siteAppearanceSchema = z.object({
   footerText: z.string().max(500).optional().nullable(),
 });
 
+const homeSectionTypeSchema = z.enum([
+  "hero",
+  "upcoming_matches",
+  "results",
+  "news",
+  "standings",
+  "teams",
+  "apply_cta",
+]);
+
+export const homeSectionItemSchema = z.object({
+  type: homeSectionTypeSchema,
+  order: z.number().int().min(0).max(99),
+  visible: z.boolean(),
+});
+
+export const homeSectionsSaveSchema = z
+  .array(homeSectionItemSchema)
+  .length(7)
+  .superRefine((arr, ctx) => {
+    const types = new Set(arr.map((s) => s.type));
+    if (types.size !== 7) {
+      ctx.addIssue({ code: "custom", message: "Дубли или пропуски в типах блоков" });
+    }
+  });
+
 export type TournamentInput = z.infer<typeof tournamentSchema>;
 export type TeamInput = z.infer<typeof teamSchema>;
 export type PlayerInput = z.infer<typeof playerSchema>;

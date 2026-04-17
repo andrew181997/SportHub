@@ -1,15 +1,41 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
-import { siteAppearanceSchema } from "@/lib/validations/league";
+import { siteAppearanceSchema, homeSectionsSaveSchema } from "@/lib/validations/league";
 import { requireLeagueContext } from "@/lib/tenant";
 import { uploadLeagueLogo } from "@/lib/upload";
 import { revalidatePath } from "next/cache";
+import type { HomeSectionConfig } from "@/lib/home-sections";
 
 function revalidateLeagueSite(slug: string) {
   /** Публичный сайт и админка живут под `/site/[slug]/…` (rewrite с поддомена). */
   revalidatePath(`/site/${slug}`, "layout");
   revalidatePath(`/site/${slug}/admin`, "layout");
+}
+
+export async function updateHomeSections(sections: HomeSectionConfig[]) {
+  const league = await requireLeagueContext();
+  const sorted = [...sections].sort((a, b) => a.order - b.order);
+  const normalized = sorted.map((s, i) => ({ ...s, order: i }));
+  const parsed = homeSectionsSaveSchema.safeParse(normalized);
+
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Некорректные данные блоков" };
+  }
+
+  await prisma.siteConfig.upsert({
+    where: { leagueId: league.id },
+    create: {
+      leagueId: league.id,
+      sections: parsed.data,
+    },
+    update: {
+      sections: parsed.data,
+    },
+  });
+
+  revalidateLeagueSite(league.slug);
+  return { success: true as const };
 }
 
 export async function updateSiteConfig(data: unknown) {

@@ -175,14 +175,21 @@ model PlayoffSeries {
   teamB          Team        @relation("PlayoffSeriesTeamB", fields: [teamBId], references: [id], onDelete: Restrict)
   teamBId        String
   winsToWin      Int
-  /** Заполняется при достижении winsToWin побед одной из команд. */
+  /** Заполняется админом вручную или при пересчёте по матчам (см. winnerDeterminedManually). */
   winnerTeamId   String?
+  /** True — winnerTeamId задаётся вручную и не перезаписывается при сохранении матчей. */
+  winnerDeterminedManually Boolean @default(false)
   label          String?
+  /** Колонка на сетке: 0 — левый/первый раунд, дальше к финалу. */
+  bracketColumn  Int         @default(0)
+  /** Порядок сверху вниз внутри колонки. */
+  bracketRow     Int         @default(0)
   createdAt      DateTime    @default(now())
 
   matches Match[]
 
   @@index([tournamentId])
+  @@index([tournamentId, bracketColumn, bracketRow])
 }
 
 model MatchEvent {

@@ -63,6 +63,7 @@ export default async function PublicMatchPage({
         teamBId: playoffSeries.teamBId,
         winsToWin: playoffSeries.winsToWin,
         winnerTeamId: playoffSeries.winnerTeamId,
+        winnerDeterminedManually: playoffSeries.winnerDeterminedManually,
         matches: playoffSeries.matches,
       })
     : null;

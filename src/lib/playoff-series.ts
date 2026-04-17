@@ -40,6 +40,7 @@ export async function recalculatePlayoffSeries(seriesId: string) {
     },
   });
   if (!series) return;
+  if (series.winnerDeterminedManually) return;
 
   let winsA = 0;
   let winsB = 0;
@@ -77,6 +78,7 @@ export function computeSeriesScore(
     teamBId: string;
     winsToWin: number;
     winnerTeamId: string | null;
+    winnerDeterminedManually?: boolean | null;
     matches: Array<{
       status: string;
       archivedAt: Date | null;
@@ -100,8 +102,13 @@ export function computeSeriesScore(
   }
 
   let winnerTeamId: string | null = null;
-  if (winsA >= series.winsToWin) winnerTeamId = series.teamAId;
-  else if (winsB >= series.winsToWin) winnerTeamId = series.teamBId;
+  if (series.winnerDeterminedManually) {
+    winnerTeamId = series.winnerTeamId;
+  } else {
+    if (winsA >= series.winsToWin) winnerTeamId = series.teamAId;
+    else if (winsB >= series.winsToWin) winnerTeamId = series.teamBId;
+    winnerTeamId = winnerTeamId ?? series.winnerTeamId;
+  }
 
   return {
     teamAId: series.teamAId,
@@ -109,6 +116,6 @@ export function computeSeriesScore(
     winsA,
     winsB,
     winsToWin: series.winsToWin,
-    winnerTeamId: winnerTeamId ?? series.winnerTeamId,
+    winnerTeamId,
   };
 }

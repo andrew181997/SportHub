@@ -2,6 +2,9 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { notFound } from "next/navigation";
 import { formatDateLong } from "@/lib/utils";
+import { PlayoffBracket } from "@/components/public/playoff-bracket";
+import { mapSeriesToBracketItem } from "@/lib/playoff-bracket-display";
+import { loadPlayoffSeriesRowsForTournament } from "@/lib/playoff-bracket-queries";
 
 export default async function TournamentDetailPage({
   params,
@@ -34,12 +37,34 @@ export default async function TournamentDetailPage({
 
   if (!tournament) notFound();
 
+  const playoffSeriesRaw =
+    tournament.type === "PLAYOFF"
+      ? await loadPlayoffSeriesRowsForTournament(tournament.id)
+      : [];
+
+  const playoffBracketItems = playoffSeriesRaw.map(mapSeriesToBracketItem);
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <h1 className="text-2xl font-bold text-gray-900">{tournament.name}</h1>
       <p className="text-gray-500">{tournament.season.name}</p>
 
-      {tournament.standings.length > 0 && (
+      {tournament.type === "PLAYOFF" && (
+        <section className="mt-8">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">Сетка плей-офф</h2>
+          {playoffBracketItems.length > 0 ? (
+            <div className="rounded-xl border border-violet-100 bg-violet-50/30 p-4">
+              <PlayoffBracket series={playoffBracketItems} />
+            </div>
+          ) : (
+            <p className="text-sm text-gray-500">
+              Серии плей-офф ещё не настроены — сетка появится после добавления пар.
+            </p>
+          )}
+        </section>
+      )}
+
+      {tournament.type !== "PLAYOFF" && tournament.standings.length > 0 && (
         <section className="mt-8">
           <h2 className="text-lg font-semibold text-gray-900 mb-4">Таблица</h2>
           <div className="rounded-xl border bg-white shadow-sm overflow-x-auto">

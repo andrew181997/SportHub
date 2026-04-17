@@ -1,6 +1,14 @@
 import { prisma } from "@/lib/prisma";
 import { notFound } from "next/navigation";
 import Link from "next/link";
+import { PlayoffBracket } from "@/components/public/playoff-bracket";
+import { mapSeriesToBracketItem } from "@/lib/playoff-bracket-display";
+import { updatePlayoffSeriesBracket } from "@/actions/playoff-bracket";
+import {
+  resyncPlayoffSeriesWinnerFromMatches,
+  setPlayoffSeriesManualResult,
+} from "@/actions/playoff-series-admin";
+import { loadPlayoffSeriesRowsForTournament } from "@/lib/playoff-bracket-queries";
 
 export default async function AdminTournamentDetailPage({
   params,
@@ -23,14 +31,9 @@ export default async function AdminTournamentDetailPage({
 
   if (!tournament) notFound();
 
-  const playoffSeriesList = await prisma.playoffSeries.findMany({
-    where: { tournamentId: tournament.id },
-    orderBy: { createdAt: "asc" },
-    include: {
-      teamA: { select: { id: true, name: true } },
-      teamB: { select: { id: true, name: true } },
-    },
-  });
+  const playoffSeriesList = await loadPlayoffSeriesRowsForTournament(tournament.id);
+
+  const playoffBracketItems = playoffSeriesList.map(mapSeriesToBracketItem);
 
   const PLAYOFF_PAIRING_LABELS: Record<string, string> = {
     SEEDING_1_8: "По посеву (1 vs 8, 2 vs 7, …)",
@@ -132,43 +135,158 @@ export default async function AdminTournamentDetailPage({
         </div>
       </div>
 
-      {tournament.type === "PLAYOFF" && playoffSeriesList.length > 0 && (
+      {tournament.type === "PLAYOFF" && (
         <section className="mt-8">
-          <h2 className="text-lg font-semibold text-gray-900">Серии плей-офф</h2>
-          <p className="text-sm text-gray-500 mt-1">
-            Матчи серии создаются в разделе «Матчи» (новая серия или продолжение существующей).
-          </p>
-          <ul className="mt-3 space-y-2 text-sm">
-            {playoffSeriesList.map((s) => (
-              <li
-                key={s.id}
-                className="rounded-lg border border-gray-200 bg-white px-3 py-2 flex flex-wrap items-center justify-between gap-2"
-              >
-                <span>
-                  {s.label ? `${s.label} · ` : ""}
-                  <span className="font-medium">{s.teamA.name}</span>
-                  {" — "}
-                  <span className="font-medium">{s.teamB.name}</span>
-                </span>
-                {s.winnerTeamId ? (
-                  <span className="text-xs font-medium text-emerald-700">
-                    Победитель серии:{" "}
-                    {s.winnerTeamId === s.teamA.id ? s.teamA.name : s.teamB.name}
-                  </span>
-                ) : (
-                  <span className="text-xs text-gray-500">Серия не завершена</span>
-                )}
-              </li>
-            ))}
-          </ul>
+          <h2 className="text-lg font-semibold text-gray-900">Плей-офф: сетка и итоги серий</h2>
+          <div className="mt-3 rounded-lg border border-violet-100 bg-violet-50/50 px-3 py-2.5 text-sm text-violet-950 space-y-1">
+            <p>
+              <span className="font-medium">Позиция на сетке:</span> колонка{" "}
+              <span className="font-mono">0</span> — первый раунд (слева), дальше номер растёт к финалу.
+              «Позиция сверху вниз» задаёт порядок пар в одной колонке.
+            </p>
+            <p>
+              <span className="font-medium">Итог серии:</span> можно{" "}
+              <span className="font-medium">занести вручную</span> (победитель фиксируется и не
+              пересчитывается при правках матчей) или при необходимости снова выставить победителя{" "}
+              <span className="font-medium">по завершённым матчам</span> в протоколе.
+            </p>
+          </div>
+          {playoffBracketItems.length > 0 ? (
+            <>
+              <div className="mt-4 rounded-xl border border-violet-200 bg-violet-50/40 p-4">
+                <PlayoffBracket series={playoffBracketItems} />
+              </div>
+              <ul className="mt-4 space-y-4 text-sm">
+                {playoffSeriesList.map((s) => {
+                  const selectOutcome =
+                    s.winnerTeamId === s.teamA.id
+                      ? "teamA"
+                      : s.winnerTeamId === s.teamB.id
+                        ? "teamB"
+                        : "clear";
+                  return (
+                  <li
+                    key={s.id}
+                    className="rounded-lg border border-gray-200 bg-white px-3 py-4 space-y-4"
+                  >
+                    <div className="text-gray-900">
+                      {s.label ? (
+                        <span className="mr-2 text-violet-800 font-medium">{s.label}</span>
+                      ) : null}
+                      <span className="font-semibold">{s.teamA.name}</span>
+                      {" — "}
+                      <span className="font-semibold">{s.teamB.name}</span>
+                    </div>
+
+                    <div className="rounded-md border border-slate-200 bg-slate-50/80 p-3 space-y-3">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+                        Итог серии
+                      </p>
+                      {s.winnerDeterminedManually ? (
+                        <p className="text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded px-2 py-1.5">
+                          Победитель зафиксирован вручную — при сохранении матчей итог не
+                          пересчитывается автоматически.
+                        </p>
+                      ) : null}
+                      <form
+                        action={setPlayoffSeriesManualResult}
+                        className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end"
+                      >
+                        <input type="hidden" name="seriesId" value={s.id} />
+                        <label className="flex flex-col gap-1 text-xs text-gray-600 min-w-[220px]">
+                          Победитель серии
+                          <select
+                            name="outcome"
+                            defaultValue={selectOutcome}
+                            className="rounded-md border border-gray-300 bg-white px-2 py-2 text-sm text-gray-900"
+                          >
+                            <option value="clear">Не завершена / сбросить и пересчитать по матчам</option>
+                            <option value="teamA">{s.teamA.name}</option>
+                            <option value="teamB">{s.teamB.name}</option>
+                          </select>
+                        </label>
+                        <button
+                          type="submit"
+                          className="rounded-md bg-slate-800 px-3 py-2 text-xs font-medium text-white hover:bg-slate-900"
+                        >
+                          Сохранить итог
+                        </button>
+                      </form>
+                      <form action={resyncPlayoffSeriesWinnerFromMatches}>
+                        <input type="hidden" name="seriesId" value={s.id} />
+                        <button
+                          type="submit"
+                          className="text-xs text-violet-700 underline underline-offset-2 hover:text-violet-900"
+                        >
+                          Только пересчитать по матчам (снять ручную фиксацию)
+                        </button>
+                      </form>
+                    </div>
+
+                    <div className="rounded-md border border-violet-100 bg-white p-3">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-violet-900 mb-2">
+                        Позиция пары на сетке (портал)
+                      </p>
+                      <form
+                        action={updatePlayoffSeriesBracket}
+                        className="flex flex-wrap items-end gap-2"
+                      >
+                        <input type="hidden" name="seriesId" value={s.id} />
+                        <label className="flex flex-col gap-0.5 text-xs text-gray-500">
+                          Колонка (раунд)
+                          <input
+                            type="number"
+                            name="bracketColumn"
+                            min={0}
+                            max={32}
+                            defaultValue={s.bracketColumn ?? 0}
+                            className="w-20 rounded border border-gray-300 px-2 py-1.5 text-sm text-gray-900"
+                          />
+                        </label>
+                        <label className="flex flex-col gap-0.5 text-xs text-gray-500">
+                          Сверху вниз
+                          <input
+                            type="number"
+                            name="bracketRow"
+                            min={0}
+                            max={127}
+                            defaultValue={s.bracketRow ?? 0}
+                            className="w-20 rounded border border-gray-300 px-2 py-1.5 text-sm text-gray-900"
+                          />
+                        </label>
+                        <button
+                          type="submit"
+                          className="rounded-md bg-violet-600 px-3 py-2 text-xs font-medium text-white hover:bg-violet-700"
+                        >
+                          Сохранить позицию
+                        </button>
+                      </form>
+                    </div>
+                  </li>
+                  );
+                })}
+              </ul>
+            </>
+          ) : (
+            <p className="mt-3 text-sm text-gray-500">
+              Серии плей-офф ещё не созданы — добавьте пару в разделе «Матчи».
+            </p>
+          )}
         </section>
       )}
 
       <section className="mt-10">
         <h2 className="text-lg font-semibold text-gray-900">Турнирная таблица</h2>
         <p className="text-sm text-gray-500 mt-1">
-          Обновляется при сохранении результатов матчей этого турнира.
+          {tournament.type === "PLAYOFF"
+            ? "Для плей-офф на портале отображается сетка; таблица по матчам группового этапа здесь не используется."
+            : "Обновляется при сохранении результатов матчей этого турнира."}
         </p>
+        {tournament.type === "PLAYOFF" ? (
+          <p className="mt-4 text-sm text-gray-400">
+            Переключитесь на блок «Сетка плей-офф» выше.
+          </p>
+        ) : (
         <div className="mt-4 rounded-xl border bg-white shadow-sm overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b">
@@ -213,6 +331,7 @@ export default async function AdminTournamentDetailPage({
             </tbody>
           </table>
         </div>
+        )}
       </section>
 
       <section className="mt-10">

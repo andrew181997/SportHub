@@ -24,13 +24,23 @@ export interface MatchFormTeam {
   name: string;
 }
 
+export interface TournamentParticipants {
+  tournamentId: string;
+  teams: MatchFormTeam[];
+}
+
 interface Props {
   tournaments: MatchFormTournament[];
-  teams: MatchFormTeam[];
+  /** Команды, заявленные в турнир (таблица Standing). */
+  participantsByTournament: TournamentParticipants[];
   playoffSeries: MatchFormPlayoffSeries[];
 }
 
-export function MatchCreateForm({ tournaments, teams, playoffSeries }: Props) {
+export function MatchCreateForm({
+  tournaments,
+  participantsByTournament,
+  playoffSeries,
+}: Props) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [error, setError] = useState("");
@@ -38,12 +48,27 @@ export function MatchCreateForm({ tournaments, teams, playoffSeries }: Props) {
   const [tournamentId, setTournamentId] = useState("");
   const [playoffMode, setPlayoffMode] = useState<"new" | "existing">("new");
 
-  const canCreate = tournaments.length > 0 && teams.length >= 2;
+  const hasAnyTournamentWithEnoughTeams = useMemo(
+    () =>
+      participantsByTournament.some((p) => p.teams.length >= 2),
+    [participantsByTournament]
+  );
+
+  const canCreate = tournaments.length > 0 && hasAnyTournamentWithEnoughTeams;
 
   const selectedTournament = useMemo(
     () => tournaments.find((t) => t.id === tournamentId),
     [tournamentId, tournaments]
   );
+
+  const teamsInSelectedTournament = useMemo(() => {
+    if (!tournamentId) return [];
+    return (
+      participantsByTournament.find((p) => p.tournamentId === tournamentId)
+        ?.teams ?? []
+    );
+  }, [participantsByTournament, tournamentId]);
+
   const isPlayoff = selectedTournament?.type === "PLAYOFF";
 
   const seriesForTournament = useMemo(
@@ -109,7 +134,7 @@ export function MatchCreateForm({ tournaments, teams, playoffSeries }: Props) {
         className="gap-2 shrink-0"
         title={
           !canCreate
-            ? "Нужен хотя бы один турнир и две команды"
+            ? "Нужен хотя бы один турнир с двумя заявленными в нём командами"
             : undefined
         }
       >
@@ -118,7 +143,7 @@ export function MatchCreateForm({ tournaments, teams, playoffSeries }: Props) {
       </Button>
       {!canCreate && (
         <p className="mt-2 max-w-sm text-right text-xs text-amber-700">
-          Создайте турнир и минимум две команды, чтобы планировать матчи.
+          Создайте турнир и добавьте в него минимум две команды (участники турнира), затем можно планировать матчи.
         </p>
       )}
       {open && canCreate && (
@@ -140,6 +165,7 @@ export function MatchCreateForm({ tournaments, teams, playoffSeries }: Props) {
               onChange={(e) => {
                 setTournamentId(e.target.value);
                 setPlayoffMode("new");
+                setError("");
               }}
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
             >
@@ -236,11 +262,11 @@ export function MatchCreateForm({ tournaments, teams, playoffSeries }: Props) {
                 id="match-home"
                 name="homeTeamId"
                 required
-                disabled={pending}
+                disabled={pending || !tournamentId || teamsInSelectedTournament.length < 2}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
               >
                 <option value="">— Команда —</option>
-                {teams.map((t) => (
+                {teamsInSelectedTournament.map((t) => (
                   <option key={t.id} value={t.id}>
                     {t.name}
                   </option>
@@ -255,11 +281,11 @@ export function MatchCreateForm({ tournaments, teams, playoffSeries }: Props) {
                 id="match-away"
                 name="awayTeamId"
                 required
-                disabled={pending}
+                disabled={pending || !tournamentId || teamsInSelectedTournament.length < 2}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
               >
                 <option value="">— Команда —</option>
-                {teams.map((t) => (
+                {teamsInSelectedTournament.map((t) => (
                   <option key={t.id} value={t.id}>
                     {t.name}
                   </option>
@@ -267,6 +293,12 @@ export function MatchCreateForm({ tournaments, teams, playoffSeries }: Props) {
               </select>
             </div>
           </div>
+          {tournamentId && teamsInSelectedTournament.length < 2 ? (
+            <p className="text-sm text-amber-800 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+              В этом турнире меньше двух заявленных команд. Откройте карточку турнира в админке и добавьте участников
+              турнира, затем создавайте матч.
+            </p>
+          ) : null}
           <Input name="venue" label="Площадка" disabled={pending} />
           <Input name="round" label="Тур (номер)" type="number" min={1} disabled={pending} />
           {error ? <p className="text-sm text-red-600">{error}</p> : null}
@@ -274,7 +306,14 @@ export function MatchCreateForm({ tournaments, teams, playoffSeries }: Props) {
             <Button type="button" variant="outline" disabled={pending} onClick={() => setOpen(false)}>
               Отмена
             </Button>
-            <Button type="submit" disabled={pending}>
+            <Button
+              type="submit"
+              disabled={
+                pending ||
+                !tournamentId ||
+                teamsInSelectedTournament.length < 2
+              }
+            >
               {pending ? "Сохранение…" : "Создать матч"}
             </Button>
           </div>
